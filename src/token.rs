@@ -1,90 +1,128 @@
-use std::{hash::Hash, mem::discriminant};
+use std::{hash::Hash, mem::discriminant, ops::Index, slice::SliceIndex};
 
 use derive_more::Display;
 
 #[derive(Debug, Clone, Eq, Display)]
-pub enum Token {
+pub enum TokenKind {
     /// (
+    #[display("(")]
     LParen,
     /// )
+    #[display(")")]
     RParen,
 
     /// .
+    #[display(".")]
     Period,
     /// ,
+    #[display(",")]
     Comma,
 
     /// FROM
+    #[display("FROM")]
     From,
 
     /// WHERE
+    #[display("WHERE")]
     Where,
 
     /// INNER
+    #[display("INNER")]
     Inner,
 
     /// JOIN
+    #[display("JOIN")]
     Join,
 
     /// SELECT
+    #[display("SELECT")]
     Select,
 
     /// ON
+    #[display("ON")]
     On,
 
     /// IN
+    #[display("IN")]
     In,
 
     /// =
+    #[display("=")]
     Eq,
 
     /// *
+    #[display("*")]
     Asterisk,
 
     /// ;
+    #[display(";")]
     Semicolon,
 
     Ident(String),
 
     String(String),
 
+    #[display("/*{_0}*/")]
     Comment(String),
 
     Unkown(char),
+
+    Whitespace(String),
 }
 
-impl Hash for Token {
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub start: Loc,
+    pub end: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Loc {
+    pub line: usize,
+    pub col: usize,
+    pub idx: usize,
+}
+
+impl<T> Index<Loc> for [T] {
+    type Output = T;
+    fn index(&self, idx: Loc) -> &Self::Output {
+        &self[idx.idx]
+    }
+}
+
+impl Hash for TokenKind {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let disc = discriminant(self);
         Hash::hash(&disc, state);
     }
 }
 
-impl PartialEq for Token {
+impl PartialEq for TokenKind {
     fn eq(&self, other: &Self) -> bool {
         PartialEq::eq(&discriminant(self), &discriminant(other))
     }
 }
 
-impl Token {
+impl TokenKind {
     pub fn ident(s: &str) -> Self {
-        Token::Ident(s.to_string())
+        TokenKind::Ident(s.to_string())
     }
 
     pub fn string(s: &str) -> Self {
-        Token::String(s.to_string())
+        TokenKind::String(s.to_string())
     }
 }
 
-pub fn ident_map(ident: String) -> Token {
+pub fn ident_map(ident: String) -> TokenKind {
     match ident.to_lowercase().as_str() {
-        "select" => Token::Select,
-        "from" => Token::From,
-        "where" => Token::Where,
-        "inner" => Token::Inner,
-        "join" => Token::Join,
-        "on" => Token::On,
-        "in" => Token::In,
-        _ => Token::Ident(ident),
+        "select" => TokenKind::Select,
+        "from" => TokenKind::From,
+        "where" => TokenKind::Where,
+        "inner" => TokenKind::Inner,
+        "join" => TokenKind::Join,
+        "on" => TokenKind::On,
+        "in" => TokenKind::In,
+        _ => TokenKind::Ident(ident),
     }
 }

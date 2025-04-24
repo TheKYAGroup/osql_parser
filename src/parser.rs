@@ -8,7 +8,7 @@ use crate::{
         SelectExpression, Statement,
     },
     lexer::Lexer,
-    token::Token,
+    token::TokenKind,
 };
 
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -23,12 +23,12 @@ pub enum Precedence {
     Access,
 }
 
-impl From<&Token> for Precedence {
-    fn from(value: &Token) -> Self {
+impl From<&TokenKind> for Precedence {
+    fn from(value: &TokenKind) -> Self {
         match value {
-            Token::Eq => Precedence::Equals,
-            Token::Period => Precedence::Access,
-            Token::In => Precedence::Range,
+            TokenKind::Eq => Precedence::Equals,
+            TokenKind::Period => Precedence::Access,
+            TokenKind::In => Precedence::Range,
             _ => Precedence::Lowest,
         }
     }
@@ -37,7 +37,7 @@ impl From<&Token> for Precedence {
 #[derive(Debug, Error)]
 pub enum ParserError {
     #[error("No prefix parse function for token: {0}")]
-    NoPrefixParseFn(Token),
+    NoPrefixParseFn(TokenKind),
 
     #[error("Partial select expression")]
     PartialSelectExpr,
@@ -52,13 +52,13 @@ pub enum ParserError {
     MissingJoinToken,
 
     #[error("Unsupported infix operator: {0}")]
-    UnsupportedInfix(Token),
+    UnsupportedInfix(TokenKind),
 
     #[error("Peek failed for token: {0}")]
-    PeekFailed(Token),
+    PeekFailed(TokenKind),
 
     #[error("Expected current token to be: {0}")]
-    ExpectedCurrent(Token),
+    ExpectedCurrent(TokenKind),
 }
 
 #[derive(Debug, Error)]
@@ -75,13 +75,13 @@ pub struct ParserErrorWithBacktrace {
 pub struct Parser {
     #[debug(skip)]
     lex: Lexer,
-    cur_token: Option<Token>,
-    peek_token: Option<Token>,
+    cur_token: Option<TokenKind>,
+    peek_token: Option<TokenKind>,
 
     #[debug(skip)]
-    prefix_parse_fns: HashMap<Token, PrefixParseFn>,
+    prefix_parse_fns: HashMap<TokenKind, PrefixParseFn>,
     #[debug(skip)]
-    infix_parse_fns: HashMap<Token, InfixParseFn>,
+    infix_parse_fns: HashMap<TokenKind, InfixParseFn>,
 }
 
 type Result<T> = core::result::Result<T, ParserErrorWithBacktrace>;
@@ -100,14 +100,14 @@ impl Parser {
             infix_parse_fns: HashMap::new(),
         };
 
-        out.register_prefix(Token::Select, Self::parse_select);
-        out.register_prefix(Token::ident(""), Self::parse_ident);
-        out.register_prefix(Token::string(""), Self::parse_ident);
-        out.register_prefix(Token::LParen, Self::parse_grouped);
+        out.register_prefix(TokenKind::Select, Self::parse_select);
+        out.register_prefix(TokenKind::ident(""), Self::parse_ident);
+        out.register_prefix(TokenKind::string(""), Self::parse_ident);
+        out.register_prefix(TokenKind::LParen, Self::parse_grouped);
 
-        out.register_infix(Token::Period, Self::parse_infix);
-        out.register_infix(Token::Eq, Self::parse_infix);
-        out.register_infix(Token::In, Self::parse_infix);
+        out.register_infix(TokenKind::Period, Self::parse_infix);
+        out.register_infix(TokenKind::Eq, Self::parse_infix);
+        out.register_infix(TokenKind::In, Self::parse_infix);
 
         out.next_token();
         out.next_token();
@@ -117,7 +117,10 @@ impl Parser {
 
     fn next_token(&mut self) {
         self.cur_token = self.peek_token.clone();
-        self.peek_token = self.lex.next_token();
+        self.peek_token = self.lex.next_token().map(|tok| tok.kind);
+        while self.peek_token_is(TokenKind::Whitespace(String::new())) {
+            self.peek_token = self.lex.next_token().map(|tok| tok.kind);
+        }
     }
 
     pub fn parse_program(&mut self) -> Result<Program> {
@@ -125,7 +128,7 @@ impl Parser {
 
         while self.cur_token.is_some() {
             match self.cur_token {
-                Some(Token::Comment(_)) => {
+                Some(TokenKind::Comment(_)) => {
                     self.next_token();
                 }
                 Some(_) => {
@@ -154,7 +157,7 @@ impl Parser {
 
         let mut left_exp = prefix(self)?;
 
-        while !self.peek_token_is(Token::Semicolon)
+        while !self.peek_token_is(TokenKind::Semicolon)
             && precedence < self.peek_precedence()
             && self.peek_token.is_some()
         {
@@ -194,7 +197,7 @@ impl Parser {
     fn parse_select(&mut self) -> Result<Expression> {
         assert_eq!(
             self.cur_token,
-            Some(Token::Select),
+            Some(TokenKind::Select),
             "Called parse_select when the cur_token is not select",
         );
 
@@ -202,16 +205,16 @@ impl Parser {
 
         let columns = match self.cur_token {
             None => return Err(ParserError::PartialSelectExpr)?,
-            Some(Token::Asterisk) => Columns::All,
+            Some(TokenKind::Asterisk) => Columns::All,
             _ => {
                 let mut columns = vec![self.parse_column()?];
 
                 self.next_token();
 
-                while self.cur_token == Some(Token::Comma) {
+                while self.cur_token == Some(TokenKind::Comma) {
                     self.next_token();
                     columns.push(self.parse_column()?);
-                    if self.peek_token_is(Token::Comma) {
+                    if self.peek_token_is(TokenKind::Comma) {
                         self.next_token();
                     }
                 }
@@ -220,19 +223,19 @@ impl Parser {
             }
         };
 
-        self.expect_peek(Token::From)?;
+        self.expect_peek(TokenKind::From)?;
         self.next_token();
 
         let from = self.parse_named()?;
 
-        let join = if self.peek_token_in(&[Token::Inner]) {
+        let join = if self.peek_token_in(&[TokenKind::Inner]) {
             self.next_token();
             Some(self.parse_join()?)
         } else {
             None
         };
 
-        let where_expr = if self.peek_token_is(Token::Where) {
+        let where_expr = if self.peek_token_is(TokenKind::Where) {
             self.next_token();
             self.next_token();
 
@@ -252,20 +255,20 @@ impl Parser {
 
     fn parse_join(&mut self) -> Result<Join> {
         let join_type = match self.cur_token {
-            Some(Token::Inner) => JoinType::Inner,
+            Some(TokenKind::Inner) => JoinType::Inner,
             _ => panic!("Unsupported join type: {:?}", self.cur_token),
         };
 
-        self.expect_peek(Token::Join)?;
+        self.expect_peek(TokenKind::Join)?;
 
         self.next_token();
 
         let expr = self.parse_expression(Precedence::Lowest)?;
 
-        let on = if self.peek_token_is(Token::On) {
+        let on = if self.peek_token_is(TokenKind::On) {
             self.next_token();
             self.next_token();
-            
+
             Some(Box::new(self.parse_expression(Precedence::Lowest)?))
         } else {
             None
@@ -281,7 +284,7 @@ impl Parser {
     fn parse_named(&mut self) -> Result<Named> {
         let expr = self.parse_expression(Precedence::Lowest)?;
 
-        let name = if self.peek_token_in(&[Token::ident(""), Token::string("")]) {
+        let name = if self.peek_token_in(&[TokenKind::ident(""), TokenKind::string("")]) {
             self.next_token();
             Some(self.parse_ident_unwrap()?)
         } else {
@@ -302,18 +305,18 @@ impl Parser {
         self.parse_named()
     }
 
-    fn register_prefix(&mut self, token: Token, fun: PrefixParseFn) {
+    fn register_prefix(&mut self, token: TokenKind, fun: PrefixParseFn) {
         self.prefix_parse_fns.insert(token, fun);
     }
 
-    fn register_infix(&mut self, token: Token, fun: InfixParseFn) {
+    fn register_infix(&mut self, token: TokenKind, fun: InfixParseFn) {
         self.infix_parse_fns.insert(token, fun);
     }
 
     fn parse_ident(&mut self) -> Result<Expression> {
         let ident = match &self.cur_token {
-            Some(Token::String(str)) => format!("\"{}\"", str),
-            Some(Token::Ident(str)) => str.clone(),
+            Some(TokenKind::String(str)) => format!("\"{}\"", str),
+            Some(TokenKind::Ident(str)) => str.clone(),
             None => Err(ParserError::UnexpectedEOF)?,
             _ => panic!(
                 "Called parse_ident with unsupported token type: {:?}",
@@ -324,11 +327,11 @@ impl Parser {
         Ok(Expression::Ident(IdentExpression { ident }))
     }
 
-    fn peek_token_is(&self, token: Token) -> bool {
+    fn peek_token_is(&self, token: TokenKind) -> bool {
         self.peek_token == Some(token)
     }
 
-    fn peek_token_in(&self, tokens: &[Token]) -> bool {
+    fn peek_token_in(&self, tokens: &[TokenKind]) -> bool {
         let Some(peek_tok) = &self.peek_token else {
             return false;
         };
@@ -339,9 +342,9 @@ impl Parser {
     fn parse_infix(&mut self, left: Expression) -> Result<Expression> {
         let op = match self.cur_token {
             None => panic!("Called parse_infix with cur_token = None"),
-            Some(Token::Period) => InfixOperator::Period,
-            Some(Token::Eq) => InfixOperator::Eq,
-            Some(Token::In) => InfixOperator::In,
+            Some(TokenKind::Period) => InfixOperator::Period,
+            Some(TokenKind::Eq) => InfixOperator::Eq,
+            Some(TokenKind::In) => InfixOperator::In,
             _ => Err(ParserError::UnsupportedInfix(
                 self.cur_token.clone().unwrap(),
             ))?,
@@ -359,15 +362,15 @@ impl Parser {
     }
 
     fn parse_grouped(&mut self) -> Result<Expression> {
-        assert_eq!(self.cur_token, Some(Token::LParen));
+        assert_eq!(self.cur_token, Some(TokenKind::LParen));
 
         self.next_token();
 
         let exp = self.parse_expression(Precedence::Lowest)?;
 
-        self.expect_peek(Token::RParen)?;
+        self.expect_peek(TokenKind::RParen)?;
 
-        let name = if self.peek_token_in(&[Token::ident(""), Token::string("")]) {
+        let name = if self.peek_token_in(&[TokenKind::ident(""), TokenKind::string("")]) {
             self.next_token();
 
             Some(self.parse_ident_unwrap()?)
@@ -381,7 +384,7 @@ impl Parser {
         }))
     }
 
-    fn expect_peek(&mut self, token: Token) -> Result<()> {
+    fn expect_peek(&mut self, token: TokenKind) -> Result<()> {
         if self.peek_token_is(token.clone()) {
             self.next_token();
             Ok(())
