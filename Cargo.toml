@@ -2,6 +2,9 @@
 name = "osql_parser"
 version = "0.1.0"
 edition = "2024"
+licence = "MIT"
+repository = "https://github.com/Cethannel/osql_parser.git"
+description = "A parser for oracle SQL"
 
 [dependencies]
 derive_more = { version = "2.0.1", features = ["debug", "display"] }
