@@ -126,7 +126,7 @@ impl Lexer {
     }
 
     fn is_whitespace(&self) -> bool {
-        return self.ch.is_whitespace();
+        self.ch.is_whitespace()
     }
 }
 

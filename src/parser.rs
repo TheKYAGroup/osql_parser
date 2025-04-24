@@ -137,7 +137,7 @@ impl Parser {
             }
         }
 
-        return Ok(program);
+        Ok(program)
     }
 
     fn parse_expression(&mut self, precedence: Precedence) -> Result<Expression> {
@@ -166,7 +166,7 @@ impl Parser {
                     return Ok(left_exp);
                 };
 
-                infix.clone()
+                *infix
             };
 
             self.next_token();
@@ -174,7 +174,7 @@ impl Parser {
             left_exp = infix(self, left_exp)?;
         }
 
-        return Ok(left_exp);
+        Ok(left_exp)
     }
 
     fn peek_precedence(&self) -> Precedence {
@@ -265,8 +265,8 @@ impl Parser {
         let on = if self.peek_token_is(Token::On) {
             self.next_token();
             self.next_token();
-            let out = Some(Box::new(self.parse_expression(Precedence::Lowest)?));
-            out
+            
+            Some(Box::new(self.parse_expression(Precedence::Lowest)?))
         } else {
             None
         };
