@@ -2,7 +2,7 @@
 name = "osql_parser"
 version = "0.1.0"
 edition = "2024"
-licence = "MIT"
+license = "MIT"
 repository = "https://github.com/Cethannel/osql_parser.git"
 description = "A parser for oracle SQL"
 
