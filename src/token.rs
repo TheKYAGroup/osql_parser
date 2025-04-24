@@ -1,4 +1,4 @@
-use std::{hash::Hash, mem::discriminant, ops::Index, slice::SliceIndex};
+use std::{fmt::Display, hash::Hash, mem::discriminant, ops::Index, slice::SliceIndex};
 
 use derive_more::Display;
 
@@ -77,7 +77,29 @@ pub struct Token {
     pub end: Loc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+pub trait GetKind {
+    fn get_kind<'a>(&'a self) -> Option<&'a TokenKind>;
+}
+
+impl GetKind for Option<Token> {
+    fn get_kind<'a>(&'a self) -> Option<&'a TokenKind> {
+        self.as_ref().map(|tok| &tok.kind)
+    }
+}
+
+impl<'b> GetKind for Option<&'b Token> {
+    fn get_kind<'a>(&'a self) -> Option<&'a TokenKind> {
+        self.as_ref().map(|tok| &tok.kind)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Loc {
     pub line: usize,
     pub col: usize,

@@ -4,11 +4,11 @@ use thiserror::Error;
 
 use crate::{
     ast::{
-        Columns, Expression, IdentExpression, InfixOperator, Join, JoinType, Named, Program,
+        Columns, ExpressionInner, IdentExpression, InfixOperator, Join, JoinType, Named, Program,
         SelectExpression, Statement,
     },
     lexer::Lexer,
-    token::TokenKind,
+    token::{GetKind, Token, TokenKind},
 };
 
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -37,7 +37,7 @@ impl From<&TokenKind> for Precedence {
 #[derive(Debug, Error)]
 pub enum ParserError {
     #[error("No prefix parse function for token: {0}")]
-    NoPrefixParseFn(TokenKind),
+    NoPrefixParseFn(Token),
 
     #[error("Partial select expression")]
     PartialSelectExpr,
@@ -75,8 +75,8 @@ pub struct ParserErrorWithBacktrace {
 pub struct Parser {
     #[debug(skip)]
     lex: Lexer,
-    cur_token: Option<TokenKind>,
-    peek_token: Option<TokenKind>,
+    cur_token: Option<Token>,
+    peek_token: Option<Token>,
 
     #[debug(skip)]
     prefix_parse_fns: HashMap<TokenKind, PrefixParseFn>,
@@ -86,8 +86,8 @@ pub struct Parser {
 
 type Result<T> = core::result::Result<T, ParserErrorWithBacktrace>;
 
-type PrefixParseFn = fn(&mut Parser) -> Result<Expression>;
-type InfixParseFn = fn(&mut Parser, left: Expression) -> Result<Expression>;
+type PrefixParseFn = fn(&mut Parser) -> Result<ExpressionInner>;
+type InfixParseFn = fn(&mut Parser, left: ExpressionInner) -> Result<ExpressionInner>;
 
 impl Parser {
     pub fn new(lex: Lexer) -> Self {
@@ -117,10 +117,7 @@ impl Parser {
 
     fn next_token(&mut self) {
         self.cur_token = self.peek_token.clone();
-        self.peek_token = self.lex.next_token().map(|tok| tok.kind);
-        while self.peek_token_is(TokenKind::Whitespace(String::new())) {
-            self.peek_token = self.lex.next_token().map(|tok| tok.kind);
-        }
+        self.peek_token = self.lex.next_token();
     }
 
     pub fn parse_program(&mut self) -> Result<Program> {
@@ -128,11 +125,15 @@ impl Parser {
 
         while self.cur_token.is_some() {
             match self.cur_token {
-                Some(TokenKind::Comment(_)) => {
+                Some(Token {
+                    kind: TokenKind::Comment(_),
+                    ..
+                }) => {
                     self.next_token();
                 }
                 Some(_) => {
-                    let stmt = Statement::Expression(self.parse_expression(Precedence::Lowest)?);
+                    let stmt =
+                        Statement::Expression(self.parse_expression(Precedence::Lowest)?.into());
                     program.statements.push(stmt);
                     self.next_token();
                 }
@@ -143,13 +144,16 @@ impl Parser {
         Ok(program)
     }
 
-    fn parse_expression(&mut self, precedence: Precedence) -> Result<Expression> {
+    fn parse_expression(&mut self, precedence: Precedence) -> Result<ExpressionInner> {
         assert!(
             self.cur_token.is_some(),
             "Called parse_expression with cur_token being None"
         );
 
-        let Some(prefix) = self.prefix_parse_fns.get(self.cur_token.as_ref().unwrap()) else {
+        let Some(prefix) = self
+            .prefix_parse_fns
+            .get(&self.cur_token.as_ref().unwrap().kind)
+        else {
             return Err(ParserError::NoPrefixParseFn(
                 self.cur_token.clone().unwrap(),
             ))?;
@@ -165,7 +169,7 @@ impl Parser {
                 let Some(cur_token) = &self.peek_token else {
                     return Ok(left_exp);
                 };
-                let Some(infix) = self.infix_parse_fns.get(cur_token) else {
+                let Some(infix) = self.infix_parse_fns.get(&cur_token.kind) else {
                     return Ok(left_exp);
                 };
 
@@ -183,27 +187,27 @@ impl Parser {
     fn peek_precedence(&self) -> Precedence {
         match &self.peek_token {
             None => Precedence::Lowest,
-            Some(tok) => tok.into(),
+            Some(tok) => Into::into(&tok.kind),
         }
     }
 
     fn cur_precedence(&self) -> Precedence {
         match &self.cur_token {
             None => Precedence::Lowest,
-            Some(tok) => tok.into(),
+            Some(tok) => Into::into(&tok.kind),
         }
     }
 
-    fn parse_select(&mut self) -> Result<Expression> {
+    fn parse_select(&mut self) -> Result<ExpressionInner> {
         assert_eq!(
-            self.cur_token,
-            Some(TokenKind::Select),
+            self.cur_token.get_kind(),
+            Some(&TokenKind::Select),
             "Called parse_select when the cur_token is not select",
         );
 
         self.next_token();
 
-        let columns = match self.cur_token {
+        let columns = match self.cur_token.get_kind() {
             None => return Err(ParserError::PartialSelectExpr)?,
             Some(TokenKind::Asterisk) => Columns::All,
             _ => {
@@ -211,7 +215,7 @@ impl Parser {
 
                 self.next_token();
 
-                while self.cur_token == Some(TokenKind::Comma) {
+                while self.cur_token.get_kind() == Some(&TokenKind::Comma) {
                     self.next_token();
                     columns.push(self.parse_column()?);
                     if self.peek_token_is(TokenKind::Comma) {
@@ -243,9 +247,10 @@ impl Parser {
             Some(Box::new(expr))
         } else {
             None
-        };
+        }
+        .map(Into::into);
 
-        Ok(Expression::Select(SelectExpression {
+        Ok(ExpressionInner::Select(SelectExpression {
             columns,
             from: Box::new(from),
             where_expr,
@@ -254,7 +259,7 @@ impl Parser {
     }
 
     fn parse_join(&mut self) -> Result<Join> {
-        let join_type = match self.cur_token {
+        let join_type = match self.cur_token.get_kind() {
             Some(TokenKind::Inner) => JoinType::Inner,
             _ => panic!("Unsupported join type: {:?}", self.cur_token),
         };
@@ -295,7 +300,7 @@ impl Parser {
     }
 
     fn parse_ident_unwrap(&mut self) -> Result<IdentExpression> {
-        let Expression::Ident(ident) = self.parse_ident()? else {
+        let ExpressionInner::Ident(ident) = self.parse_ident()? else {
             panic!("parse_ident didn't return ident");
         };
         Ok(ident)
@@ -313,8 +318,8 @@ impl Parser {
         self.infix_parse_fns.insert(token, fun);
     }
 
-    fn parse_ident(&mut self) -> Result<Expression> {
-        let ident = match &self.cur_token {
+    fn parse_ident(&mut self) -> Result<ExpressionInner> {
+        let ident = match &self.cur_token.get_kind() {
             Some(TokenKind::String(str)) => format!("\"{}\"", str),
             Some(TokenKind::Ident(str)) => str.clone(),
             None => Err(ParserError::UnexpectedEOF)?,
@@ -324,29 +329,29 @@ impl Parser {
             ),
         };
 
-        Ok(Expression::Ident(IdentExpression { ident }))
+        Ok(ExpressionInner::Ident(IdentExpression { ident }))
     }
 
     fn peek_token_is(&self, token: TokenKind) -> bool {
-        self.peek_token == Some(token)
+        self.peek_token.get_kind() == Some(&token)
     }
 
     fn peek_token_in(&self, tokens: &[TokenKind]) -> bool {
-        let Some(peek_tok) = &self.peek_token else {
+        let Some(peek_tok) = self.peek_token.get_kind() else {
             return false;
         };
 
         tokens.contains(peek_tok)
     }
 
-    fn parse_infix(&mut self, left: Expression) -> Result<Expression> {
-        let op = match self.cur_token {
+    fn parse_infix(&mut self, left: ExpressionInner) -> Result<ExpressionInner> {
+        let op = match self.cur_token.get_kind() {
             None => panic!("Called parse_infix with cur_token = None"),
             Some(TokenKind::Period) => InfixOperator::Period,
             Some(TokenKind::Eq) => InfixOperator::Eq,
             Some(TokenKind::In) => InfixOperator::In,
             _ => Err(ParserError::UnsupportedInfix(
-                self.cur_token.clone().unwrap(),
+                self.cur_token.as_ref().get_kind().unwrap().clone(),
             ))?,
         };
 
@@ -354,15 +359,15 @@ impl Parser {
         self.next_token();
         let right = self.parse_expression(precedence)?;
 
-        Ok(Expression::Infix(crate::ast::InfixExpression {
+        Ok(ExpressionInner::Infix(crate::ast::InfixExpression {
             left: Box::new(left),
             op,
             right: Box::new(right),
         }))
     }
 
-    fn parse_grouped(&mut self) -> Result<Expression> {
-        assert_eq!(self.cur_token, Some(TokenKind::LParen));
+    fn parse_grouped(&mut self) -> Result<ExpressionInner> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::LParen));
 
         self.next_token();
 
@@ -378,8 +383,8 @@ impl Parser {
             None
         };
 
-        Ok(Expression::Grouped(crate::ast::GroupedExpression {
-            inner: Box::new(exp),
+        Ok(ExpressionInner::Grouped(crate::ast::GroupedExpression {
+            inner: Box::new(exp.into()),
             name,
         }))
     }
@@ -399,7 +404,9 @@ impl Parser {
 mod tests {
     use ntest::timeout;
 
-    use crate::ast::{GroupedExpression, IdentExpression, InfixExpression, SelectExpression};
+    use crate::ast::{
+        Expression, GroupedExpression, IdentExpression, InfixExpression, SelectExpression,
+    };
 
     use super::*;
 
@@ -421,7 +428,11 @@ mod tests {
 
         assert_eq!(program.statements.len(), 1);
 
-        let Statement::Expression(Expression::Select(select)) = &program.statements[0] else {
+        let Statement::Expression(Expression {
+            inner: ExpressionInner::Select(select),
+            ..
+        }) = &program.statements[0]
+        else {
             panic!()
         };
 
@@ -429,9 +440,10 @@ mod tests {
             &SelectExpression {
                 columns: crate::ast::Columns::All,
                 from: Box::new(Named {
-                    expr: Expression::Ident(IdentExpression {
+                    expr: ExpressionInner::Ident(IdentExpression {
                         ident: "Hello".to_string()
-                    }),
+                    })
+                    .into(),
                     name: None,
                 }),
                 where_expr: None,
@@ -452,23 +464,27 @@ mod tests {
 
         assert_eq!(program.statements.len(), 1);
 
-        let Statement::Expression(Expression::Grouped(select)) = &program.statements[0] else {
+        let Statement::Expression(ExpressionInner::Grouped(select)) = &program.statements[0] else {
             panic!()
         };
 
         assert_eq!(
             &GroupedExpression {
-                inner: Box::new(Expression::Select(SelectExpression {
-                    columns: crate::ast::Columns::All,
-                    from: Box::new(Named {
-                        expr: Expression::Ident(IdentExpression {
-                            ident: "Hello".to_string()
+                inner: Box::new(
+                    ExpressionInner::Select(SelectExpression {
+                        columns: crate::ast::Columns::All,
+                        from: Box::new(Named {
+                            expr: ExpressionInner::Ident(IdentExpression {
+                                ident: "Hello".to_string()
+                            })
+                            .into(),
+                            name: None,
                         }),
-                        name: None,
-                    }),
-                    where_expr: None,
-                    join: None
-                },)),
+                        where_expr: None,
+                        join: None
+                    },)
+                    .into()
+                ),
                 name: Some(IdentExpression {
                     ident: "M".to_string()
                 })
@@ -490,16 +506,21 @@ mod tests {
 
         assert_eq!(program.statements.len(), 1);
 
-        let Statement::Expression(Expression::Select(select)) = &program.statements[0] else {
+        let Statement::Expression(Expression {
+            inner: ExpressionInner::Select(select),
+            ..
+        }) = &program.statements[0]
+        else {
             panic!()
         };
 
         let expected = SelectExpression {
             columns: crate::ast::Columns::All,
             from: Box::new(Named {
-                expr: Expression::Ident(IdentExpression {
+                expr: ExpressionInner::Ident(IdentExpression {
                     ident: "Hello".to_string(),
-                }),
+                })
+                .into(),
                 name: Some(IdentExpression {
                     ident: "h".to_string(),
                 }),
@@ -507,32 +528,45 @@ mod tests {
             where_expr: None,
             join: Some(crate::ast::Join {
                 join_type: JoinType::Inner,
-                expr: Box::new(Expression::Select(SelectExpression {
-                    columns: crate::ast::Columns::All,
-                    from: Box::new(Named {
-                        expr: Expression::Ident(IdentExpression {
-                            ident: "Other".to_string(),
+                expr: Box::new(
+                    ExpressionInner::Select(SelectExpression {
+                        columns: crate::ast::Columns::All,
+                        from: Box::new(Named {
+                            expr: ExpressionInner::Ident(IdentExpression {
+                                ident: "Other".to_string(),
+                            })
+                            .into(),
+                            name: Some(IdentExpression {
+                                ident: "o".to_string(),
+                            }),
                         }),
-                        name: Some(IdentExpression {
-                            ident: "o".to_string(),
-                        }),
-                    }),
-                    where_expr: None,
-                    join: None,
-                })),
-                on: Some(Box::new(Expression::Infix(crate::ast::InfixExpression {
-                    left: Box::new(Expression::Infix(crate::ast::InfixExpression {
-                        left: Box::new(Expression::ident("h")),
-                        op: InfixOperator::Period,
-                        right: Box::new(Expression::ident("first")),
-                    })),
-                    op: InfixOperator::Eq,
-                    right: Box::new(Expression::Infix(crate::ast::InfixExpression {
-                        left: Box::new(Expression::ident("o")),
-                        op: InfixOperator::Period,
-                        right: Box::new(Expression::ident("first")),
-                    })),
-                }))),
+                        where_expr: None,
+                        join: None,
+                    })
+                    .into(),
+                ),
+                on: Some(Box::new(
+                    ExpressionInner::Infix(crate::ast::InfixExpression {
+                        left: Box::new(
+                            ExpressionInner::Infix(crate::ast::InfixExpression {
+                                left: Box::new(ExpressionInner::ident("h").into()),
+                                op: InfixOperator::Period,
+                                right: Box::new(ExpressionInner::ident("first").into()),
+                            })
+                            .into(),
+                        ),
+                        op: InfixOperator::Eq,
+                        right: Box::new(
+                            ExpressionInner::Infix(crate::ast::InfixExpression {
+                                left: Box::new(ExpressionInner::ident("o").into()),
+                                op: InfixOperator::Period,
+                                right: Box::new(ExpressionInner::ident("first").into()),
+                            })
+                            .into(),
+                        ),
+                    })
+                    .into(),
+                )),
             }),
         };
 
@@ -543,10 +577,16 @@ mod tests {
     }
 
     fn test_expression(expected: &Expression, got: &Expression) {
-        match (expected, got) {
-            (Expression::Select(expected), Expression::Select(got)) => test_select(expected, got),
-            (Expression::Infix(expected), Expression::Infix(got)) => test_infix(expected, got),
-            (Expression::Ident(expected), Expression::Ident(got)) => assert_eq!(expected, got),
+        match (&expected.inner, &got.inner) {
+            (ExpressionInner::Select(expected), ExpressionInner::Select(got)) => {
+                test_select(expected, got)
+            }
+            (ExpressionInner::Infix(expected), ExpressionInner::Infix(got)) => {
+                test_infix(expected, got)
+            }
+            (ExpressionInner::Ident(expected), ExpressionInner::Ident(got)) => {
+                assert_eq!(expected, got)
+            }
             _ => panic!("{:?}, {:?}", expected, got),
         }
     }

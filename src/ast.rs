@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use derive_more::Display;
 
+use crate::token::Loc;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub statements: Vec<Statement>,
@@ -22,19 +24,53 @@ pub enum Statement {
     Expression(Expression),
 }
 
+#[derive(Debug, Clone, Display)]
+#[display("{inner}")]
+pub struct Expression {
+    pub inner: ExpressionInner,
+    pub start: Loc,
+    pub end: Loc,
+}
+
+impl PartialEq for Expression {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Display)]
-pub enum Expression {
+pub enum ExpressionInner {
     Grouped(GroupedExpression),
     Select(SelectExpression),
     Infix(InfixExpression),
     Ident(IdentExpression),
 }
 
-impl Expression {
+impl Into<Expression> for ExpressionInner {
+    fn into(self) -> Expression {
+        Expression {
+            inner: self,
+            start: Default::default(),
+            end: Default::default(),
+        }
+    }
+}
+
+trait IntoOptional<T> {
+    fn into_opt(self) -> T;
+}
+
+impl Into<Box<Expression>> for Box<ExpressionInner> {
+    fn into(self) -> Box<Expression> {
+        Box::new((*self).into())
+    }
+}
+
+impl ExpressionInner {
     #[cfg(test)]
     /// A helper function for writing tests
     pub(crate) fn ident(str: &str) -> Self {
-        Self::Ident(IdentExpression {
+        ExpressionInner::Ident(IdentExpression {
             ident: str.to_string(),
         })
     }
