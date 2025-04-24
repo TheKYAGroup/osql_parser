@@ -1,6 +1,5 @@
-use std::{backtrace::Backtrace, collections::HashMap, iter::Map, string::ParseError};
+use std::{backtrace::Backtrace, collections::HashMap};
 
-use derive_more::Display;
 use thiserror::Error;
 
 use crate::{
@@ -325,18 +324,6 @@ impl Parser {
         Ok(Expression::Ident(IdentExpression { ident }))
     }
 
-    fn cur_token_is(&self, token: Token) -> bool {
-        self.cur_token == Some(token)
-    }
-
-    fn cur_token_in(&self, tokens: &[Token]) -> bool {
-        let Some(cur_tok) = &self.cur_token else {
-            return false;
-        };
-
-        tokens.contains(cur_tok)
-    }
-
     fn peek_token_is(&self, token: Token) -> bool {
         self.peek_token == Some(token)
     }
@@ -401,16 +388,6 @@ impl Parser {
         } else {
             eprintln!("Expect peek: {:?}", self);
             Err(ParserError::PeekFailed(token))?
-        }
-    }
-
-    fn expect_cur(&mut self, token: Token) -> Result<()> {
-        if self.cur_token_is(token.clone()) {
-            self.next_token();
-            Ok(())
-        } else {
-            eprintln!("Expect cur: {:?}", self);
-            Err(ParserError::ExpectedCurrent(token))?
         }
     }
 }

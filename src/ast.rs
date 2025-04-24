@@ -1,4 +1,4 @@
-use std::{fmt::Display, ptr::without_provenance};
+use std::fmt::Display;
 
 use derive_more::Display;
 
@@ -31,6 +31,8 @@ pub enum Expression {
 }
 
 impl Expression {
+    #[cfg(test)]
+    /// A helper function for writing tests
     pub(crate) fn ident(str: &str) -> Self {
         Self::Ident(IdentExpression {
             ident: str.to_string(),

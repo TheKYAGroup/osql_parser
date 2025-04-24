@@ -1,7 +1,6 @@
 use std::{hash::Hash, mem::discriminant};
 
 use derive_more::Display;
-use logos::{Lexer, Logos};
 
 #[derive(Debug, Clone, Eq, Display)]
 pub enum Token {

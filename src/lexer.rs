@@ -1,5 +1,4 @@
 use crate::token::{Token, ident_map};
-use logos::{Logos, Source};
 
 #[derive(Debug)]
 pub struct Lexer {
