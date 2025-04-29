@@ -1,7 +1,4 @@
-use std::{
-    fmt::{Debug, Display},
-    usize,
-};
+use std::fmt::{Debug, Display};
 
 use ambassador::{delegatable_trait, Delegate};
 use derive_more::Display;
@@ -80,7 +77,6 @@ pub struct ExpressionIdx {
 }
 
 impl FmtWithStore for ExpressionIdx {
-    #[must_use]
     fn fmt_with_store(
         &self,
         f: &mut std::fmt::Formatter<'_>,
@@ -111,13 +107,6 @@ pub struct PrintExpression<'a> {
 }
 
 impl<'a> PrintExpression<'a> {
-    fn extend(&'a self, idx: &'a ExpressionIdx) -> Self {
-        Self {
-            idx,
-            store: self.store,
-        }
-    }
-
     pub fn new(inner: &'a dyn FmtWithStore, store: &'a ExpressionStore) -> Self {
         Self { idx: inner, store }
     }

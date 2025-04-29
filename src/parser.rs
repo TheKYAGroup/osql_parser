@@ -174,16 +174,13 @@ impl Parser {
     fn next_token(&mut self) {
         self.cur_token = self.peek_token.clone();
         self.peek_token = self.lex.next_token();
-        loop {
-            match self.peek_token {
-                Some(Token {
-                    kind: TokenKind::Comment(_),
-                    ..
-                }) => {
-                    self.peek_token = self.lex.next_token();
-                }
-                _ => break,
-            }
+        while let Some(Token {
+            kind: TokenKind::Comment(_),
+            ..
+        }) = self.peek_token
+        {}
+        {
+            self.peek_token = self.lex.next_token();
         }
     }
 
