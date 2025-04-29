@@ -123,9 +123,15 @@ impl<'a> PrintExpression<'a> {
     }
 }
 
-impl<'a> Display for PrintExpression<'a> {
+impl Display for PrintExpression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         FmtWithStore::fmt_with_store(self.idx, f, self.store)
+    }
+}
+
+impl Default for ExpressionStore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -208,19 +214,19 @@ impl FmtWithStore for All {
     }
 }
 
-impl Into<Expression> for ExpressionInner {
-    fn into(self) -> Expression {
+impl From<ExpressionInner> for Expression {
+    fn from(val: ExpressionInner) -> Self {
         Expression {
-            inner: self,
+            inner: val,
             start: Default::default(),
             end: Default::default(),
         }
     }
 }
 
-impl Into<Box<Expression>> for Box<ExpressionInner> {
-    fn into(self) -> Box<Expression> {
-        Box::new((*self).into())
+impl From<Box<ExpressionInner>> for Box<Expression> {
+    fn from(val: Box<ExpressionInner>) -> Self {
+        Box::new((*val).into())
     }
 }
 

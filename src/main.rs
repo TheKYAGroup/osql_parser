@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File, io::Read, path::Path};
+use std::{fs::File, io::Read, path::Path};
 
 use osql_parser::{
     lexer::Lexer,

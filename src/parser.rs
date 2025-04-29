@@ -320,8 +320,7 @@ impl Parser {
             Some(self.parse_expression(Precedence::Lowest)?)
         } else {
             None
-        }
-        .map(Into::into);
+        };
 
         let group = if self.peek_token_is(TokenKind::Group) {
             self.next_token();
@@ -466,7 +465,7 @@ impl Parser {
 
     fn parse_int(&mut self) -> Result<ExpressionIdx> {
         let int = match &self.cur_token.get_kind() {
-            Some(TokenKind::Integer(str)) => str.parse().map_err(|err| ParserError::from(err))?,
+            Some(TokenKind::Integer(str)) => str.parse().map_err(ParserError::from)?,
             None => Err(ParserError::UnexpectedEOF)?,
             _ => panic!(
                 "Called parse_ident with unsupported token type: {:?}",
@@ -670,7 +669,7 @@ impl Parser {
 
         self.next_token();
 
-        let right = self.parse_expression(Precedence::Lowest)?.into();
+        let right = self.parse_expression(Precedence::Lowest)?;
 
         let end = self.get_end().unwrap();
 
@@ -701,7 +700,7 @@ impl Parser {
         self.expect_peek(TokenKind::Else)?;
         self.next_token();
 
-        let else_expr = self.parse_expression(Precedence::Lowest)?.into();
+        let else_expr = self.parse_expression(Precedence::Lowest)?;
 
         self.expect_peek(TokenKind::End)?;
 
@@ -723,7 +722,7 @@ impl Parser {
         let condition = self.parse_expression(Precedence::Lowest)?;
         self.expect_peek(TokenKind::Then)?;
         self.next_token();
-        let result = self.parse_expression(Precedence::Lowest)?.into();
+        let result = self.parse_expression(Precedence::Lowest)?;
 
         Ok(When { condition, result })
     }
@@ -1022,7 +1021,7 @@ mod tests {
         );
         println!("{}", &program);
 
-        test_select(&program.store, &expected, &select);
+        test_select(&program.store, &expected, select);
     }
 
     fn test_expression(store: &ExpressionStore, expected: &ExpressionIdx, got: &ExpressionIdx) {

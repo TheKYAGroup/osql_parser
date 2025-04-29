@@ -1,4 +1,3 @@
-use std::result;
 
 use crate::token::{ident_map, Loc, Token, TokenKind};
 
@@ -48,9 +47,7 @@ impl Lexer {
         }
         if self.pos < self.input.len() {
             self.ch = self
-                .input
-                .bytes()
-                .nth(self.pos)
+                .input.as_bytes().get(self.pos).copied()
                 .expect("Failed to get char in range") as char;
         } else {
             self.ch = '\0';
@@ -162,7 +159,7 @@ impl Lexer {
     }
 
     fn peek_char_is(&self, ch: char) -> bool {
-        self.input.bytes().nth(self.peek_pos).map(|b| b as char) == Some(ch)
+        self.input.as_bytes().get(self.peek_pos).copied().map(|b| b as char) == Some(ch)
     }
 
     fn collect_ident(&mut self) -> Token {
@@ -206,7 +203,7 @@ impl Lexer {
     }
 
     fn is_digit(ch: char) -> bool {
-        ch.is_digit(10)
+        ch.is_ascii_digit()
     }
 
     fn collect_comment(&mut self) -> Option<CollectedStr> {

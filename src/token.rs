@@ -1,4 +1,4 @@
-use std::{fmt::Display, hash::Hash, mem::discriminant, ops::Index, slice::SliceIndex};
+use std::{fmt::Display, hash::Hash, mem::discriminant, ops::Index};
 
 use derive_more::Display;
 
@@ -187,17 +187,17 @@ impl Display for Token {
 }
 
 pub trait GetKind {
-    fn get_kind<'a>(&'a self) -> Option<&'a TokenKind>;
+    fn get_kind(&self) -> Option<&TokenKind>;
 }
 
 impl GetKind for Option<Token> {
-    fn get_kind<'a>(&'a self) -> Option<&'a TokenKind> {
+    fn get_kind(&self) -> Option<&TokenKind> {
         self.as_ref().map(|tok| &tok.kind)
     }
 }
 
-impl<'b> GetKind for Option<&'b Token> {
-    fn get_kind<'a>(&'a self) -> Option<&'a TokenKind> {
+impl GetKind for Option<&Token> {
+    fn get_kind(&self) -> Option<&TokenKind> {
         self.as_ref().map(|tok| &tok.kind)
     }
 }
