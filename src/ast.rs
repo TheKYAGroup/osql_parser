@@ -80,12 +80,15 @@ pub struct ExpressionIdx {
 }
 
 impl FmtWithStore for ExpressionIdx {
+    #[must_use]
     fn fmt_with_store(
         &self,
         f: &mut std::fmt::Formatter<'_>,
         store: &ExpressionStore,
     ) -> std::fmt::Result {
-        let expr = store.get_ref(self).unwrap();
+        let Some(expr) = store.get_ref(self) else {
+            unreachable!()
+        };
         FmtWithStore::fmt_with_store(expr, f, store)
     }
 }
@@ -139,7 +142,7 @@ impl ExpressionStore {
 
         if let Some(id) = self.unused.pop() {
             *self.inner.get_mut(id.idx as usize).unwrap() = ExpressionWithUuid { expr, uuid };
-            return id;
+            return ExpressionIdx { uuid, idx: id.idx };
         }
 
         self.inner.push(ExpressionWithUuid { uuid, expr });
@@ -188,6 +191,8 @@ pub enum ExpressionInner {
     All(All),
     Array(Array),
     Named(Named),
+    NullOr(NullOr),
+    Null(Null),
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -259,6 +264,7 @@ pub struct SelectExpression {
     pub from: Named,
     pub where_expr: Option<ExpressionIdx>,
     pub join: Vec<Join>,
+    pub group: Option<GroupBy>,
 }
 
 impl FmtWithStore for SelectExpression {
@@ -280,7 +286,27 @@ impl FmtWithStore for SelectExpression {
             join.fmt_with_store(f, store)?;
         }
 
+        if let Some(group) = &self.group {
+            group.fmt_with_store(f, store)?;
+        }
+
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupBy {
+    pub by: ExpressionIdx,
+}
+
+impl FmtWithStore for GroupBy {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "GROUP BY ")?;
+        self.by.fmt_with_store(f, store)
     }
 }
 
@@ -297,7 +323,7 @@ impl FmtWithStore for When {
         store: &ExpressionStore,
     ) -> std::fmt::Result {
         write!(f, "WHEN ")?;
-        self.condition.fmt_with_store(f, store);
+        self.condition.fmt_with_store(f, store)?;
         write!(f, "THEN ")?;
         self.result.fmt_with_store(f, store)
     }
@@ -463,6 +489,14 @@ pub enum InfixOperator {
     And,
     #[display(" OR ")]
     Or,
+    #[display(" IS ")]
+    Is,
+    #[display(" USING ")]
+    Using,
+    #[display(" LIKE ")]
+    Like,
+    #[display(" <> ")]
+    NotEq,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -478,8 +512,8 @@ impl FmtWithStore for InfixExpression {
         f: &mut std::fmt::Formatter<'_>,
         store: &ExpressionStore,
     ) -> std::fmt::Result {
-        self.left.fmt_with_store(f, store);
-        write!(f, "{}", self.op);
+        self.left.fmt_with_store(f, store)?;
+        write!(f, "{}", self.op)?;
         self.right.fmt_with_store(f, store)
     }
 }
@@ -513,6 +547,8 @@ impl FmtWithStore for FunctionCall {
 pub enum PrefixOperator {
     #[display(" - ")]
     Sub,
+    #[display(" NOT ")]
+    Not,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -527,7 +563,7 @@ impl FmtWithStore for PrefixExpression {
         f: &mut std::fmt::Formatter<'_>,
         store: &ExpressionStore,
     ) -> std::fmt::Result {
-        write!(f, "{}", self.op);
+        write!(f, "{}", self.op)?;
         self.right.fmt_with_store(f, store)
     }
 }
@@ -547,6 +583,30 @@ pub struct Array {
     pub arr: Vec<ExpressionIdx>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct NullOr {
+    pub expected: ExpressionIdx,
+    pub alternative: ExpressionIdx,
+}
+
+impl FmtWithStore for NullOr {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "@{{")?;
+
+        self.expected.fmt_with_store(f, store)?;
+
+        write!(f, "}}{{")?;
+
+        self.alternative.fmt_with_store(f, store)?;
+
+        write!(f, "}}")
+    }
+}
+
 impl FmtWithStore for Array {
     fn fmt_with_store(
         &self,
@@ -563,3 +623,7 @@ impl FmtWithStore for Array {
         write!(f, "({})", thing)
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Display)]
+#[display("NULL")]
+pub struct Null;

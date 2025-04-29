@@ -11,6 +11,13 @@ pub enum TokenKind {
     #[display(")")]
     RParen,
 
+    /// {
+    #[display("{{")]
+    LBracket,
+    /// }
+    #[display("}}")]
+    RBracket,
+
     /// <
     #[display("<")]
     LT,
@@ -96,9 +103,41 @@ pub enum TokenKind {
     #[display("OR")]
     Or,
 
+    /// GROUP
+    #[display("GROUP")]
+    Group,
+
+    /// BY
+    #[display("BY")]
+    By,
+
+    /// IS
+    #[display("IS")]
+    Is,
+
+    /// NULL
+    #[display("NULL")]
+    Null,
+
+    /// NOT
+    #[display("NOT")]
+    Not,
+
+    /// USING
+    #[display("USING")]
+    Using,
+
+    /// LIKE
+    #[display("LIKE")]
+    Like,
+
     /// =
     #[display("=")]
     Eq,
+
+    /// <>
+    #[display("<>")]
+    NotEq,
 
     /// *
     #[display("*")]
@@ -115,6 +154,10 @@ pub enum TokenKind {
     /// /
     #[display("/")]
     Slash,
+
+    /// @
+    #[display("@")]
+    At,
 
     Ident(String),
 
@@ -214,6 +257,13 @@ pub fn ident_map(ident: String) -> TokenKind {
         "left" => TokenKind::Left,
         "and" => TokenKind::And,
         "or" => TokenKind::Or,
+        "group" => TokenKind::Group,
+        "by" => TokenKind::By,
+        "is" => TokenKind::Is,
+        "null" => TokenKind::Null,
+        "not" => TokenKind::Not,
+        "using" => TokenKind::Using,
+        "like" => TokenKind::Like,
         _ => TokenKind::Ident(ident),
     }
 }

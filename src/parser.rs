@@ -4,9 +4,9 @@ use thiserror::Error;
 
 use crate::{
     ast::{
-        Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, IdentExpression,
-        InfixOperator, IntExpression, Join, JoinType, Named, PrefixOperator, Program,
-        SelectExpression, Statement, When,
+        Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, GroupBy,
+        IdentExpression, InfixOperator, IntExpression, Join, JoinType, Named, PrefixOperator,
+        Program, SelectExpression, Statement, When,
     },
     lexer::Lexer,
     token::{GetKind, Loc, Token, TokenKind},
@@ -31,10 +31,15 @@ pub enum Precedence {
 impl From<&TokenKind> for Precedence {
     fn from(value: &TokenKind) -> Self {
         match value {
+            TokenKind::Not => Precedence::Prefix,
             TokenKind::As => Precedence::As,
             TokenKind::Eq => Precedence::Equals,
+            TokenKind::NotEq => Precedence::Equals,
             TokenKind::Period => Precedence::Access,
             TokenKind::In => Precedence::Range,
+            TokenKind::Like => Precedence::Range,
+            TokenKind::Is => Precedence::Range,
+            TokenKind::Using => Precedence::Range,
             TokenKind::Sub => Precedence::Sum,
             TokenKind::Asterisk => Precedence::Product,
             TokenKind::Slash => Precedence::Product,
@@ -107,8 +112,6 @@ pub struct Parser {
     #[debug(skip)]
     infix_parse_fns: HashMap<TokenKind, InfixParseFn>,
 
-    expr_depth: usize,
-
     #[debug(skip)]
     expr_store: ExpressionStore,
 }
@@ -128,8 +131,6 @@ impl Parser {
             prefix_parse_fns: HashMap::new(),
             infix_parse_fns: HashMap::new(),
 
-            expr_depth: 0,
-
             expr_store: ExpressionStore::new(),
         };
 
@@ -141,6 +142,9 @@ impl Parser {
         out.register_prefix(TokenKind::Integer("".to_string()), Self::parse_int);
         out.register_prefix(TokenKind::Sub, Self::parse_prefix);
         out.register_prefix(TokenKind::Asterisk, Self::parse_prefix);
+        out.register_prefix(TokenKind::At, Self::parse_null_or);
+        out.register_prefix(TokenKind::Null, Self::parse_null);
+        out.register_prefix(TokenKind::Not, Self::parse_prefix);
 
         out.register_infix(TokenKind::Period, Self::parse_infix);
         out.register_infix(TokenKind::Eq, Self::parse_infix);
@@ -156,6 +160,10 @@ impl Parser {
         out.register_infix(TokenKind::And, Self::parse_infix);
         out.register_infix(TokenKind::Or, Self::parse_infix);
         out.register_infix(TokenKind::As, Self::parse_as);
+        out.register_infix(TokenKind::Is, Self::parse_infix);
+        out.register_infix(TokenKind::NotEq, Self::parse_infix);
+        out.register_infix(TokenKind::Using, Self::parse_infix);
+        out.register_infix(TokenKind::Like, Self::parse_infix);
 
         out.next_token();
         out.next_token();
@@ -211,10 +219,6 @@ impl Parser {
             "Called parse_expression with cur_token being None"
         );
 
-        self.expr_depth += 1;
-
-        eprintln!("Expr depth: {}", self.expr_depth);
-
         let Some(prefix) = self
             .prefix_parse_fns
             .get(&self.cur_token.clone().unwrap().kind)
@@ -225,8 +229,6 @@ impl Parser {
         };
 
         let mut left_exp = Box::new(prefix(self)?);
-
-        eprintln!("Got prefix");
 
         while !self.peek_token_is(TokenKind::Semicolon)
             && precedence < self.peek_precedence()
@@ -247,10 +249,6 @@ impl Parser {
 
             left_exp = Box::new(infix(self, *left_exp)?);
         }
-
-        self.expr_depth -= 1;
-
-        eprintln!("Exited depth: {}", self.expr_depth);
 
         Ok(*left_exp)
     }
@@ -311,9 +309,7 @@ impl Parser {
 
         while self.peek_token_in(join_things) {
             self.next_token();
-            println!("Parsing join: {:?}\n", self);
             let out = self.parse_join()?;
-            println!("Parsed join: {:?}\n", self);
             join.push(out);
         }
 
@@ -327,6 +323,13 @@ impl Parser {
         }
         .map(Into::into);
 
+        let group = if self.peek_token_is(TokenKind::Group) {
+            self.next_token();
+            Some(self.parse_group_by()?)
+        } else {
+            None
+        };
+
         let end = self.cur_token.as_ref().unwrap().end.clone();
 
         Ok(self.expr_store.add(Expression {
@@ -335,6 +338,7 @@ impl Parser {
                 from,
                 where_expr,
                 join,
+                group,
             }),
             start,
             end,
@@ -446,6 +450,16 @@ impl Parser {
         }))
     }
 
+    fn parse_null(&mut self) -> Result<ExpressionIdx> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Null));
+
+        Ok(self.new_expr_idx(Expression {
+            inner: ExpressionInner::Null(crate::ast::Null),
+            start: self.get_start().unwrap(),
+            end: self.get_end().unwrap(),
+        }))
+    }
+
     fn new_expr_idx(&mut self, expr: Expression) -> ExpressionIdx {
         self.expr_store.add(expr)
     }
@@ -520,6 +534,10 @@ impl Parser {
             Some(TokenKind::GTEq) => InfixOperator::GTEq,
             Some(TokenKind::And) => InfixOperator::And,
             Some(TokenKind::Or) => InfixOperator::Or,
+            Some(TokenKind::Is) => InfixOperator::Is,
+            Some(TokenKind::NotEq) => InfixOperator::NotEq,
+            Some(TokenKind::Using) => InfixOperator::Using,
+            Some(TokenKind::Like) => InfixOperator::Like,
             _ => Err(ParserError::UnsupportedInfix(
                 self.cur_token.as_ref().get_kind().unwrap().clone(),
             ))?,
@@ -558,16 +576,12 @@ impl Parser {
         if self.cur_token_is(TokenKind::RParen) {
             return Ok(vec![]);
         }
-        eprintln!("Parsing array element : {:?}", self);
         let mut out = vec![self.parse_expression(Precedence::Lowest)?];
-        eprintln!("Parsed element and then: {:?}", self);
 
         while self.peek_token_is(TokenKind::Comma) {
             self.next_token();
             self.next_token();
             out.push(self.parse_expression(Precedence::Lowest)?);
-
-            eprintln!("Parsed element and then: {:?}", self);
         }
 
         self.expect_peek(TokenKind::RParen)?;
@@ -611,10 +625,36 @@ impl Parser {
         }))
     }
 
+    fn parse_null_or(&mut self) -> Result<ExpressionIdx> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::At));
+        let start = self.get_start().unwrap();
+
+        self.expect_peek(TokenKind::LBracket)?;
+
+        self.next_token();
+
+        let expected = self.parse_expression(Precedence::Lowest)?;
+        self.expect_peek(TokenKind::RBracket)?;
+        self.expect_peek(TokenKind::LBracket)?;
+        self.next_token();
+        let alternative = self.parse_expression(Precedence::Lowest)?;
+        self.expect_peek(TokenKind::RBracket)?;
+
+        let end = self.get_end().unwrap();
+
+        let inner = ExpressionInner::NullOr(crate::ast::NullOr {
+            expected,
+            alternative,
+        });
+
+        Ok(self.new_expr_idx(Expression { inner, start, end }))
+    }
+
     fn parse_prefix(&mut self) -> Result<ExpressionIdx> {
         let start = self.get_start().unwrap();
         let op = match self.cur_token.get_kind() {
             Some(TokenKind::Sub) => PrefixOperator::Sub,
+            Some(TokenKind::Not) => PrefixOperator::Not,
             Some(TokenKind::Asterisk) => {
                 let end = self.get_end().unwrap();
                 return Ok(self.new_expr_idx(Expression {
@@ -693,13 +733,22 @@ impl Parser {
             self.next_token();
             Ok(())
         } else {
-            eprintln!("Expected: {:?}", token);
-            eprintln!("Expect peek: {:?}", self);
             Err(ParserError::PeekFailed {
                 expected: token,
                 got: self.peek_token.clone(),
             })?
         }
+    }
+
+    fn parse_group_by(&mut self) -> Result<GroupBy> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Group));
+        self.expect_peek(TokenKind::By)?;
+
+        self.next_token();
+
+        let by = self.parse_expression(Precedence::Lowest)?;
+
+        Ok(GroupBy { by })
     }
 }
 
@@ -795,6 +844,7 @@ mod tests {
                 from: Named { expr, name: None },
                 where_expr: None,
                 join: vec![],
+                group: None,
             }
         };
 
@@ -841,6 +891,7 @@ mod tests {
                         from: Named { expr, name: None },
                         where_expr: None,
                         join: vec![],
+                        group: None,
                     })
                     .into(),
                 ),
@@ -877,6 +928,7 @@ mod tests {
             let store = &mut program.store;
 
             SelectExpression {
+                group: None,
                 columns: crate::ast::Columns::All,
                 from: Named {
                     expr: store.add(
@@ -903,6 +955,7 @@ mod tests {
                         };
                         store.add(
                             ExpressionInner::Select(SelectExpression {
+                                group: None,
                                 columns: crate::ast::Columns::All,
                                 from: Named {
                                     expr,

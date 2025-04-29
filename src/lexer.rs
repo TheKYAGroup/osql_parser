@@ -68,7 +68,16 @@ impl Lexer {
         let out = match self.ch {
             '(' => TokenKind::LParen,
             ')' => TokenKind::RParen,
-            '<' if (self.peek_char_is('=')) => TokenKind::LTEq,
+            '{' => TokenKind::LBracket,
+            '}' => TokenKind::RBracket,
+            '<' if (self.peek_char_is('=')) => {
+                self.advance();
+                TokenKind::LTEq
+            }
+            '<' if (self.peek_char_is('>')) => {
+                self.advance();
+                TokenKind::NotEq
+            }
             '<' => TokenKind::LT,
             '>' if (self.peek_char_is('=')) => {
                 self.advance();
@@ -83,6 +92,7 @@ impl Lexer {
             '*' => TokenKind::Asterisk,
             '-' => TokenKind::Sub,
             ';' => TokenKind::Semicolon,
+            '@' => TokenKind::At,
             '\0' => None?,
             '"' | '\'' => {
                 let string = self.collect_string()?;
