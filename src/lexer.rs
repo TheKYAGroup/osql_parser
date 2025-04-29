@@ -1,4 +1,3 @@
-
 use crate::token::{ident_map, Loc, Token, TokenKind};
 
 #[derive(Debug)]
@@ -11,6 +10,7 @@ pub struct Lexer {
     col: usize,
 }
 
+#[derive(Debug)]
 struct CollectedStr {
     string: String,
     start: Loc,
@@ -47,7 +47,10 @@ impl Lexer {
         }
         if self.pos < self.input.len() {
             self.ch = self
-                .input.as_bytes().get(self.pos).copied()
+                .input
+                .as_bytes()
+                .get(self.pos)
+                .copied()
                 .expect("Failed to get char in range") as char;
         } else {
             self.ch = '\0';
@@ -159,7 +162,12 @@ impl Lexer {
     }
 
     fn peek_char_is(&self, ch: char) -> bool {
-        self.input.as_bytes().get(self.peek_pos).copied().map(|b| b as char) == Some(ch)
+        self.input
+            .as_bytes()
+            .get(self.peek_pos)
+            .copied()
+            .map(|b| b as char)
+            == Some(ch)
     }
 
     fn collect_ident(&mut self) -> Token {

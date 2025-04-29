@@ -178,7 +178,6 @@ impl Parser {
             kind: TokenKind::Comment(_),
             ..
         }) = self.peek_token
-        {}
         {
             self.peek_token = self.lex.next_token();
         }

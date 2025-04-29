@@ -173,10 +173,12 @@ pub enum TokenKind {
     Integer(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(derive_more::Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
+    #[debug(skip)]
     pub start: Loc,
+    #[debug(skip)]
     pub end: Loc,
 }
 

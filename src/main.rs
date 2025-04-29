@@ -42,8 +42,9 @@ fn main() {
         }
         Err(ParserErrorWithBacktrace {
             inner: ParserError::NoPrefixParseFn(tok),
-            ..
+            backtrace,
         }) => {
+            eprintln!("Backtrace: {}", backtrace);
             eprintln!("No prefix parse function for: {}", tok.kind);
             eprintln!("{}", &input[0..tok.start.idx]);
             eprintln!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
