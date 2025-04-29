@@ -32,6 +32,27 @@ pub struct Expression {
     pub end: Loc,
 }
 
+pub struct ExpressionIdx(u32);
+
+pub struct ExpressionStore {
+    inner: Vec<Expression>,
+}
+
+impl ExpressionStore {
+    pub fn new() -> Self {
+        Self { inner: Vec::new() }
+    }
+
+    pub fn add_expr(&mut self, expr: Expression) -> ExpressionIdx {
+        self.inner.push(expr);
+        ExpressionIdx((self.inner.len() - 1) as u32)
+    }
+
+    pub fn get_expr<'a>(&'a self, idx: ExpressionIdx) -> &'a Expression {
+        &self.inner[idx.0 as usize]
+    }
+}
+
 impl PartialEq for Expression {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
@@ -44,6 +65,14 @@ pub enum ExpressionInner {
     Select(SelectExpression),
     Infix(InfixExpression),
     Ident(IdentExpression),
+    Int(IntExpression),
+    Case(CaseExpression),
+    Prefix(PrefixExpression),
+    FunctionCall(FunctionCall),
+    #[display("*")]
+    All,
+    Array(Array),
+    Named(Named),
 }
 
 impl Into<Expression> for ExpressionInner {
@@ -54,10 +83,6 @@ impl Into<Expression> for ExpressionInner {
             end: Default::default(),
         }
     }
-}
-
-trait IntoOptional<T> {
-    fn into_opt(self) -> T;
 }
 
 impl Into<Box<Expression>> for Box<ExpressionInner> {
@@ -99,7 +124,7 @@ pub struct SelectExpression {
     pub columns: Columns,
     pub from: Box<Named>,
     pub where_expr: Option<Box<Expression>>,
-    pub join: Option<Join>,
+    pub join: Vec<Join>,
 }
 
 impl Display for SelectExpression {
@@ -110,9 +135,41 @@ impl Display for SelectExpression {
             write!(f, " WHERE {}", w_expr)?;
         }
 
-        if let Some(join) = &self.join {
+        for join in &self.join {
             write!(f, " {}", join)?;
         }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+#[display("WHEN {condition} THEN {result}")]
+pub struct When {
+    pub condition: Box<Expression>,
+    pub result: Box<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CaseExpression {
+    pub expr: Option<Box<Expression>>,
+    pub when_exprs: Vec<When>,
+    pub else_expr: Box<Expression>,
+}
+
+impl Display for CaseExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CASE")?;
+
+        if let Some(expr) = &self.expr {
+            write!(f, " {}", expr)?;
+        }
+
+        for when in &self.when_exprs {
+            write!(f, " {}", when)?;
+        }
+
+        write!(f, " ELSE {}", self.else_expr)?;
 
         Ok(())
     }
@@ -166,11 +223,13 @@ impl Display for Join {
 pub enum JoinType {
     #[display("INNER")]
     Inner,
+    #[display("LEFT")]
+    Left,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Named {
-    pub expr: Expression,
+    pub expr: Box<Expression>,
     pub name: Option<IdentExpression>,
 }
 
@@ -194,6 +253,24 @@ pub enum InfixOperator {
     Eq,
     #[display(" IN ")]
     In,
+    #[display(" - ")]
+    Sub,
+    #[display(" / ")]
+    Div,
+    #[display(" * ")]
+    Mul,
+    #[display(" < ")]
+    LT,
+    #[display(" > ")]
+    GT,
+    #[display(" <= ")]
+    LTEq,
+    #[display(" >= ")]
+    GTEq,
+    #[display(" AND ")]
+    And,
+    #[display(" OR ")]
+    Or,
 }
 
 #[derive(Debug, Clone, PartialEq, Display)]
@@ -204,7 +281,63 @@ pub struct InfixExpression {
     pub right: Box<Expression>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionCall {
+    pub func: Box<Expression>,
+    pub args: Vec<Expression>,
+}
+
+impl Display for FunctionCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let args = self
+            .args
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect::<Vec<String>>()
+            .join(", ");
+        write!(f, "{}({})", self.func, args)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum PrefixOperator {
+    #[display(" - ")]
+    Sub,
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+#[display("({op}{right})")]
+pub struct PrefixExpression {
+    pub op: PrefixOperator,
+    pub right: Box<Expression>,
+}
+
 #[derive(Debug, Clone, PartialEq, Display)]
 pub struct IdentExpression {
     pub ident: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub struct IntExpression {
+    pub int: i64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Array {
+    pub arr: Vec<Expression>,
+}
+
+impl Display for Array {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let thing = self
+            .arr
+            .iter()
+            .map(|expr| expr.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        write!(f, "({})", thing)
+    }
 }

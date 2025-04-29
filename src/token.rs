@@ -11,6 +11,20 @@ pub enum TokenKind {
     #[display(")")]
     RParen,
 
+    /// <
+    #[display("<")]
+    LT,
+    /// >
+    #[display(">")]
+    GT,
+
+    /// <=
+    #[display("<=")]
+    LTEq,
+    /// >=
+    #[display(">=")]
+    GTEq,
+
     /// .
     #[display(".")]
     Period,
@@ -30,6 +44,10 @@ pub enum TokenKind {
     #[display("INNER")]
     Inner,
 
+    /// LEFT
+    #[display("LEFT")]
+    Left,
+
     /// JOIN
     #[display("JOIN")]
     Join,
@@ -46,6 +64,38 @@ pub enum TokenKind {
     #[display("IN")]
     In,
 
+    /// CASE
+    #[display("CASE")]
+    Case,
+
+    /// WHEN
+    #[display("WHEN")]
+    When,
+
+    /// THEN
+    #[display("THEN")]
+    Then,
+
+    /// ELSE
+    #[display("ELSE")]
+    Else,
+
+    /// END
+    #[display("END")]
+    End,
+
+    /// AS
+    #[display("AS")]
+    As,
+
+    /// AND
+    #[display("AND")]
+    And,
+
+    /// OR
+    #[display("OR")]
+    Or,
+
     /// =
     #[display("=")]
     Eq,
@@ -54,9 +104,17 @@ pub enum TokenKind {
     #[display("*")]
     Asterisk,
 
+    /// -
+    #[display("-")]
+    Sub,
+
     /// ;
     #[display(";")]
     Semicolon,
+
+    /// /
+    #[display("/")]
+    Slash,
 
     Ident(String),
 
@@ -68,6 +126,8 @@ pub enum TokenKind {
     Unkown(char),
 
     Whitespace(String),
+
+    Integer(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -145,6 +205,15 @@ pub fn ident_map(ident: String) -> TokenKind {
         "join" => TokenKind::Join,
         "on" => TokenKind::On,
         "in" => TokenKind::In,
+        "case" => TokenKind::Case,
+        "when" => TokenKind::When,
+        "then" => TokenKind::Then,
+        "else" => TokenKind::Else,
+        "end" => TokenKind::End,
+        "as" => TokenKind::As,
+        "left" => TokenKind::Left,
+        "and" => TokenKind::And,
+        "or" => TokenKind::Or,
         _ => TokenKind::Ident(ident),
     }
 }

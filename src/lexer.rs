@@ -1,3 +1,5 @@
+use std::result;
+
 use crate::token::{Loc, Token, TokenKind, ident_map};
 
 #[derive(Debug)]
@@ -47,9 +49,9 @@ impl Lexer {
         if self.pos < self.input.len() {
             self.ch = self
                 .input
-                .chars()
+                .bytes()
                 .nth(self.pos)
-                .expect("Failed to get char in range");
+                .expect("Failed to get char in range") as char;
         } else {
             self.ch = '\0';
         }
@@ -65,12 +67,23 @@ impl Lexer {
         let out = match self.ch {
             '(' => TokenKind::LParen,
             ')' => TokenKind::RParen,
+            '<' if (self.peek_char_is('=')) => {
+                self.next_token();
+                TokenKind::LTEq
+            }
+            '<' => TokenKind::LT,
+            '>' if (self.peek_char_is('=')) => {
+                self.next_token();
+                TokenKind::GTEq
+            }
+            '>' => TokenKind::GT,
 
             ',' => TokenKind::Comma,
             '.' => TokenKind::Period,
 
             '=' => TokenKind::Eq,
             '*' => TokenKind::Asterisk,
+            '-' => TokenKind::Sub,
             ';' => TokenKind::Semicolon,
             '\0' => None?,
             '"' | '\'' => {
@@ -91,9 +104,11 @@ impl Lexer {
                     end: collected.end,
                 });
             }
+            '/' => TokenKind::Slash,
 
             _ if (Self::is_letter(self.ch)) => return Some(self.collect_ident()),
             _ if (Self::is_whitespace(self.ch)) => return Some(self.collect_whitespace()),
+            _ if (Self::is_digit(self.ch)) => return Some(self.collect_integer()),
 
             _ => TokenKind::Unkown(self.ch),
         };
@@ -139,12 +154,23 @@ impl Lexer {
     }
 
     fn peek_char_is(&self, ch: char) -> bool {
-        self.input.chars().nth(self.peek_pos) == Some(ch)
+        self.input.bytes().nth(self.peek_pos).map(|b| b as char) == Some(ch)
     }
 
     fn collect_ident(&mut self) -> Token {
+        assert!(Self::is_letter(self.ch));
         let collected = self.collect_while_or_eof(Self::is_letter);
         let kind = ident_map(collected.string);
+        Token {
+            kind,
+            start: collected.start,
+            end: collected.end,
+        }
+    }
+
+    fn collect_integer(&mut self) -> Token {
+        let collected = self.collect_while_or_eof(Self::is_digit);
+        let kind = TokenKind::Integer(collected.string);
         Token {
             kind,
             start: collected.start,
@@ -168,12 +194,18 @@ impl Lexer {
     }
 
     fn is_letter(ch: char) -> bool {
-        ch.is_alphabetic()
+        ch.is_ascii_alphabetic() || ch == '_' || ch == '-'
+    }
+
+    fn is_digit(ch: char) -> bool {
+        ch.is_digit(10)
     }
 
     fn collect_comment(&mut self) -> Option<CollectedStr> {
         let start = self.cur_loc();
+        assert_eq!(self.ch, '/');
         self.advance();
+        assert_eq!(self.ch, '*');
         self.advance();
         while !(self.ch == '*' && self.peek_char_is('/')) && self.ch != '\0' {
             self.advance();
@@ -184,7 +216,9 @@ impl Lexer {
 
         let out = self.input[start.idx + 2..self.pos].to_string();
 
+        assert_eq!(self.ch, '*');
         self.advance();
+        assert_eq!(self.ch, '/');
         self.advance();
 
         let end = self.cur_loc();
@@ -317,6 +351,67 @@ mod test {
         assert_eq!(None, lexer.next_token());
 
         assert_eq!(input, lexer.recreate(toks))
+    }
+
+    #[test]
+    fn case_when_no_comment() {
+        let input = r#"
+        CASE 
+            WHEN IFNULL(GL.GLActualCosts, 0) / IFNULL(PE.ESTIMATE_AMOUNT_EXCL_FEE, 1) > 1 
+            "#;
+
+        let tests = vec![
+            TokenKind::Case,
+            TokenKind::When,
+            TokenKind::ident("IFNULL"),
+            TokenKind::LParen,
+        ];
+
+        let mut lexer = Lexer::new(input.to_string());
+
+        for tt in tests {
+            let tok = lexer.next_token().unwrap();
+            println!("Tok: {:?}", tok);
+            assert_eq!(tt, tok.kind)
+        }
+    }
+
+    #[test]
+    fn case_when() {
+        let input = r#"
+		/*IFNULL(pd.TOTALCOMMITMENT - pd.TOTALINVOICED,0) OpenCommitmentTotal,*/
+      /*Percent complete: IF((TOTAL COSTS/ESTIMATE COSTS)>1,1,((TOTAL COSTS/ESTIMATE COSTS)
+      (can’t be above 100)
+      Earned Revenue: Estimated revenue * percent complete
+      Over/Under Billing: Earned Revenue - Total Billed
+      WIP Earned: Estimated Revenue - Earned Revenue */
+
+        CASE 
+            WHEN IFNULL(GL.GLActualCosts, 0) / IFNULL(PE.ESTIMATE_AMOUNT_EXCL_FEE, 1) > 1 
+            "#;
+
+        let tests = vec![
+            TokenKind::Comment(
+                "IFNULL(pd.TOTALCOMMITMENT - pd.TOTALINVOICED,0) OpenCommitmentTotal,".to_string(),
+            ),
+            TokenKind::Comment(r#"Percent complete: IF((TOTAL COSTS/ESTIMATE COSTS)>1,1,((TOTAL COSTS/ESTIMATE COSTS)
+      (can’t be above 100)
+      Earned Revenue: Estimated revenue * percent complete
+      Over/Under Billing: Earned Revenue - Total Billed
+      WIP Earned: Estimated Revenue - Earned Revenue "#.to_string()),
+             TokenKind::Case,
+             TokenKind::When,
+             TokenKind::ident("IFNULL"),
+             TokenKind::LParen,
+        ];
+
+        let mut lexer = Lexer::new(input.to_string());
+
+        for tt in tests {
+            let tok = lexer.next_token();
+            println!("Tok: {:?}", tok);
+            assert_eq!(Some(tt), tok.map(|tok| { tok.kind }))
+        }
     }
 
     #[test]
@@ -603,7 +698,7 @@ mod test {
         let input = r#"SELECT
 *
     FROM
-Test;"#;
+Test WHERE Hello = 1;"#;
 
         let tests = vec![
             Token {
@@ -659,16 +754,68 @@ Test;"#;
                 },
             },
             Token {
-                kind: TokenKind::Semicolon,
+                kind: TokenKind::Where,
                 start: Loc {
-                    line: 3,
-                    col: 4,
-                    idx: 22,
-                },
-                end: Loc {
                     line: 3,
                     col: 5,
                     idx: 23,
+                },
+                end: Loc {
+                    line: 3,
+                    col: 10,
+                    idx: 28,
+                },
+            },
+            Token {
+                kind: TokenKind::ident("Hello"),
+                start: Loc {
+                    line: 3,
+                    col: 11,
+                    idx: 29,
+                },
+                end: Loc {
+                    line: 3,
+                    col: 16,
+                    idx: 34,
+                },
+            },
+            Token {
+                kind: TokenKind::Eq,
+                start: Loc {
+                    line: 3,
+                    col: 17,
+                    idx: 35,
+                },
+                end: Loc {
+                    line: 3,
+                    col: 18,
+                    idx: 36,
+                },
+            },
+            Token {
+                kind: TokenKind::Integer("1".to_string()),
+                start: Loc {
+                    line: 3,
+                    col: 19,
+                    idx: 37,
+                },
+                end: Loc {
+                    line: 3,
+                    col: 20,
+                    idx: 38,
+                },
+            },
+            Token {
+                kind: TokenKind::Semicolon,
+                start: Loc {
+                    line: 3,
+                    col: 20,
+                    idx: 38,
+                },
+                end: Loc {
+                    line: 3,
+                    col: 21,
+                    idx: 39,
                 },
             },
         ];
@@ -680,5 +827,10 @@ Test;"#;
         }
 
         assert_eq!(None, lexer.next_token());
+    }
+
+    #[test]
+    fn is_letter() {
+        assert!(!Lexer::is_letter(' '));
     }
 }
