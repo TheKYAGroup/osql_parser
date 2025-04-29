@@ -1,6 +1,6 @@
 use std::result;
 
-use crate::token::{Loc, Token, TokenKind, ident_map};
+use crate::token::{ident_map, Loc, Token, TokenKind};
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -61,19 +61,17 @@ impl Lexer {
         }
     }
 
+    #[must_use]
     pub fn next_token(&mut self) -> Option<Token> {
         self.skip_whitespace();
         let start = self.cur_loc();
         let out = match self.ch {
             '(' => TokenKind::LParen,
             ')' => TokenKind::RParen,
-            '<' if (self.peek_char_is('=')) => {
-                self.next_token();
-                TokenKind::LTEq
-            }
+            '<' if (self.peek_char_is('=')) => TokenKind::LTEq,
             '<' => TokenKind::LT,
             '>' if (self.peek_char_is('=')) => {
-                self.next_token();
+                self.advance();
                 TokenKind::GTEq
             }
             '>' => TokenKind::GT,

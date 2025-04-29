@@ -1,55 +1,170 @@
-use std::fmt::Display;
+use std::{
+    fmt::{Debug, Display},
+    usize,
+};
 
+use ambassador::{delegatable_trait, Delegate};
 use derive_more::Display;
+use uuid::Uuid;
 
 use crate::token::Loc;
 
-#[derive(Debug, Clone, PartialEq)]
+macro_rules! write_store {
+    ($dst:expr, $store:expr, $value:expr) => {
+        FmtWithStore::fmt_with_store(&$value, $dst, $store)
+    };
+}
+
+#[derive(Clone)]
 pub struct Program {
+    pub store: ExpressionStore,
     pub statements: Vec<Statement>,
+}
+
+impl Debug for Program {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.statements)
+    }
+}
+
+impl PartialEq for Program {
+    fn eq(&self, other: &Self) -> bool {
+        self.statements == other.statements
+    }
 }
 
 impl Display for Program {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for stmt in &self.statements {
-            writeln!(f, "{};", stmt)?;
+            match stmt {
+                Statement::Expression(expression_idx) => {
+                    let pexp = PrintExpression {
+                        idx: expression_idx,
+                        store: &self.store,
+                    };
+                    writeln!(f, "{};", pexp)?;
+                }
+            }
         }
 
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Display)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    Expression(Expression),
+    Expression(ExpressionIdx),
 }
 
-#[derive(Debug, Clone, Display)]
-#[display("{inner}")]
+#[derive(Debug, Clone)]
 pub struct Expression {
     pub inner: ExpressionInner,
     pub start: Loc,
     pub end: Loc,
 }
 
-pub struct ExpressionIdx(u32);
+impl FmtWithStore for Expression {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        FmtWithStore::fmt_with_store(&self.inner, f, store)
+    }
+}
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct ExpressionIdx {
+    uuid: Uuid,
+    idx: u32,
+}
+
+impl FmtWithStore for ExpressionIdx {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        let expr = store.get_ref(self).unwrap();
+        FmtWithStore::fmt_with_store(expr, f, store)
+    }
+}
+
+#[derive(Clone)]
+struct ExpressionWithUuid {
+    uuid: Uuid,
+    expr: Expression,
+}
+
+#[derive(Clone)]
 pub struct ExpressionStore {
-    inner: Vec<Expression>,
+    inner: Vec<ExpressionWithUuid>,
+    unused: Vec<ExpressionIdx>,
+}
+
+pub struct PrintExpression<'a> {
+    idx: &'a dyn FmtWithStore,
+    store: &'a ExpressionStore,
+}
+
+impl<'a> PrintExpression<'a> {
+    fn extend(&'a self, idx: &'a ExpressionIdx) -> Self {
+        Self {
+            idx,
+            store: self.store,
+        }
+    }
+
+    pub fn new(inner: &'a dyn FmtWithStore, store: &'a ExpressionStore) -> Self {
+        Self { idx: inner, store }
+    }
+}
+
+impl<'a> Display for PrintExpression<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        FmtWithStore::fmt_with_store(self.idx, f, self.store)
+    }
 }
 
 impl ExpressionStore {
     pub fn new() -> Self {
-        Self { inner: Vec::new() }
+        Self {
+            inner: vec![],
+            unused: vec![],
+        }
     }
 
-    pub fn add_expr(&mut self, expr: Expression) -> ExpressionIdx {
-        self.inner.push(expr);
-        ExpressionIdx((self.inner.len() - 1) as u32)
+    pub fn add(&mut self, expr: Expression) -> ExpressionIdx {
+        let uuid = Uuid::new_v4();
+
+        if let Some(id) = self.unused.pop() {
+            *self.inner.get_mut(id.idx as usize).unwrap() = ExpressionWithUuid { expr, uuid };
+            return id;
+        }
+
+        self.inner.push(ExpressionWithUuid { uuid, expr });
+        ExpressionIdx {
+            uuid,
+            idx: (self.inner.len() - 1) as u32,
+        }
     }
 
-    pub fn get_expr<'a>(&'a self, idx: ExpressionIdx) -> &'a Expression {
-        &self.inner[idx.0 as usize]
+    pub fn get_ref<'a>(&'a self, idx: &ExpressionIdx) -> Option<&'a Expression> {
+        let thing = self.inner.get(idx.idx as usize)?;
+        if thing.uuid == idx.uuid {
+            Some(&thing.expr)
+        } else {
+            None
+        }
+    }
+
+    pub fn remove(&mut self, idx: ExpressionIdx) -> Option<Expression> {
+        let expr = self.inner.get_mut(idx.idx as usize)?;
+
+        expr.uuid = Uuid::new_v4();
+        self.unused.push(idx);
+
+        Some(expr.expr.clone())
     }
 }
 
@@ -59,7 +174,8 @@ impl PartialEq for Expression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Display)]
+#[derive(Debug, Clone, Delegate, PartialEq)]
+#[delegate(FmtWithStore)]
 pub enum ExpressionInner {
     Grouped(GroupedExpression),
     Select(SelectExpression),
@@ -69,10 +185,22 @@ pub enum ExpressionInner {
     Case(CaseExpression),
     Prefix(PrefixExpression),
     FunctionCall(FunctionCall),
-    #[display("*")]
-    All,
+    All(All),
     Array(Array),
     Named(Named),
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct All;
+
+impl FmtWithStore for All {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        _store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "*")
+    }
 }
 
 impl Into<Expression> for ExpressionInner {
@@ -103,13 +231,19 @@ impl ExpressionInner {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupedExpression {
-    pub inner: Box<Expression>,
+    pub inner: ExpressionIdx,
     pub name: Option<IdentExpression>,
 }
 
-impl Display for GroupedExpression {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({})", self.inner,)?;
+impl FmtWithStore for GroupedExpression {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "(")?;
+        self.inner.fmt_with_store(f, store)?;
+        write!(f, ")")?;
 
         if let Some(name) = &self.name {
             write!(f, " {}", name)?;
@@ -122,56 +256,101 @@ impl Display for GroupedExpression {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectExpression {
     pub columns: Columns,
-    pub from: Box<Named>,
-    pub where_expr: Option<Box<Expression>>,
+    pub from: Named,
+    pub where_expr: Option<ExpressionIdx>,
     pub join: Vec<Join>,
 }
 
-impl Display for SelectExpression {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SELECT {} FROM {}", self.columns, self.from)?;
+impl FmtWithStore for SelectExpression {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "SELECT ")?;
+        write_store!(f, store, self.columns)?;
+        write!(f, " FROM ")?;
+        write_store!(f, store, self.from)?;
 
         if let Some(w_expr) = &self.where_expr {
-            write!(f, " WHERE {}", w_expr)?;
+            write!(f, " WHERE: {}", PrintExpression { store, idx: w_expr })?;
         }
 
         for join in &self.join {
-            write!(f, " {}", join)?;
+            join.fmt_with_store(f, store)?;
         }
 
         Ok(())
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Display)]
-#[display("WHEN {condition} THEN {result}")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct When {
-    pub condition: Box<Expression>,
-    pub result: Box<Expression>,
+    pub condition: ExpressionIdx,
+    pub result: ExpressionIdx,
+}
+
+impl FmtWithStore for When {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "WHEN ")?;
+        self.condition.fmt_with_store(f, store);
+        write!(f, "THEN ")?;
+        self.result.fmt_with_store(f, store)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CaseExpression {
-    pub expr: Option<Box<Expression>>,
+    pub expr: Option<ExpressionIdx>,
     pub when_exprs: Vec<When>,
-    pub else_expr: Box<Expression>,
+    pub else_expr: ExpressionIdx,
 }
 
-impl Display for CaseExpression {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtWithStore for CaseExpression {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
         write!(f, "CASE")?;
 
         if let Some(expr) = &self.expr {
-            write!(f, " {}", expr)?;
+            expr.fmt_with_store(f, store)?;
         }
 
         for when in &self.when_exprs {
-            write!(f, " {}", when)?;
+            when.fmt_with_store(f, store)?;
         }
 
-        write!(f, " ELSE {}", self.else_expr)?;
+        write!(f, " ELSE ")?;
 
-        Ok(())
+        self.else_expr.fmt_with_store(f, store)
+    }
+}
+
+#[delegatable_trait]
+pub trait FmtWithStore {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result;
+}
+
+impl<T> FmtWithStore for T
+where
+    T: Display,
+{
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        _store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        Display::fmt(&self, f)
     }
 }
 
@@ -181,8 +360,12 @@ pub enum Columns {
     Individual(Vec<Named>),
 }
 
-impl Display for Columns {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtWithStore for Columns {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
         match self {
             Columns::All => write!(f, "*"),
             Columns::Individual(nameds) => {
@@ -191,7 +374,7 @@ impl Display for Columns {
                     "{}",
                     nameds
                         .iter()
-                        .map(ToString::to_string)
+                        .map(|named| { PrintExpression { idx: named, store }.to_string() })
                         .collect::<Vec<String>>()
                         .join(", ")
                 )
@@ -203,16 +386,21 @@ impl Display for Columns {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Join {
     pub join_type: JoinType,
-    pub expr: Box<Expression>,
-    pub on: Option<Box<Expression>>,
+    pub expr: ExpressionIdx,
+    pub on: Option<ExpressionIdx>,
 }
 
-impl Display for Join {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtWithStore for Join {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
         write!(f, "{} JOIN ", self.join_type)?;
-        write!(f, "{}", self.expr)?;
+        self.expr.fmt_with_store(f, store)?;
         if let Some(on) = &self.on {
-            write!(f, " ON {}", on)?;
+            write!(f, " ON ")?;
+            on.fmt_with_store(f, store)?;
         }
 
         Ok(())
@@ -229,13 +417,17 @@ pub enum JoinType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Named {
-    pub expr: Box<Expression>,
+    pub expr: ExpressionIdx,
     pub name: Option<IdentExpression>,
 }
 
-impl Display for Named {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.expr)?;
+impl FmtWithStore for Named {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write_store!(f, store, self.expr)?;
 
         if let Some(name) = &self.name {
             write!(f, " {}", name)?;
@@ -273,29 +465,45 @@ pub enum InfixOperator {
     Or,
 }
 
-#[derive(Debug, Clone, PartialEq, Display)]
-#[display("({left}{op}{right})")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InfixExpression {
-    pub left: Box<Expression>,
+    pub left: ExpressionIdx,
     pub op: InfixOperator,
-    pub right: Box<Expression>,
+    pub right: ExpressionIdx,
+}
+
+impl FmtWithStore for InfixExpression {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        self.left.fmt_with_store(f, store);
+        write!(f, "{}", self.op);
+        self.right.fmt_with_store(f, store)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCall {
-    pub func: Box<Expression>,
-    pub args: Vec<Expression>,
+    pub func: ExpressionIdx,
+    pub args: Vec<ExpressionIdx>,
 }
 
-impl Display for FunctionCall {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtWithStore for FunctionCall {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
         let args = self
             .args
             .iter()
-            .map(|arg| arg.to_string())
+            .map(|arg| PrintExpression { idx: arg, store }.to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        write!(f, "{}({})", self.func, args)?;
+        self.func.fmt_with_store(f, store)?;
+        write!(f, "({})", args)?;
 
         Ok(())
     }
@@ -307,11 +515,21 @@ pub enum PrefixOperator {
     Sub,
 }
 
-#[derive(Debug, Clone, PartialEq, Display)]
-#[display("({op}{right})")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PrefixExpression {
     pub op: PrefixOperator,
-    pub right: Box<Expression>,
+    pub right: ExpressionIdx,
+}
+
+impl FmtWithStore for PrefixExpression {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "{}", self.op);
+        self.right.fmt_with_store(f, store)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Display)]
@@ -326,15 +544,19 @@ pub struct IntExpression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Array {
-    pub arr: Vec<Expression>,
+    pub arr: Vec<ExpressionIdx>,
 }
 
-impl Display for Array {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl FmtWithStore for Array {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
         let thing = self
             .arr
             .iter()
-            .map(|expr| expr.to_string())
+            .map(|expr| PrintExpression { store, idx: expr }.to_string())
             .collect::<Vec<_>>()
             .join(", ");
 

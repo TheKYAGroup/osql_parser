@@ -10,6 +10,8 @@ description = "A parser for oracle SQL"
 lto = "fat"
 
 [dependencies]
+ambassador = "0.4.1"
 derive_more = { version = "2.0.1", features = ["debug", "display"] }
 ntest = "0.9.3"
 thiserror = "2.0.12"
+uuid = { version = "1.16.0", features = ["v4"] }
