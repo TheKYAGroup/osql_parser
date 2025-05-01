@@ -172,13 +172,17 @@ impl Lexer {
 
     fn collect_ident(&mut self) -> Token {
         assert!(Self::is_letter(self.ch));
-        let collected = self.collect_while_or_eof(Self::is_letter);
+        let collected = self.collect_while_or_eof(Self::is_ident_char);
         let kind = ident_map(collected.string);
         Token {
             kind,
             start: collected.start,
             end: collected.end,
         }
+    }
+
+    fn is_ident_char(ch: char) -> bool {
+        Self::is_digit(ch) || Self::is_letter(ch) || ch == '_' || ch == '-'
     }
 
     fn collect_integer(&mut self) -> Token {
