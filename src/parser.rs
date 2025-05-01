@@ -44,6 +44,7 @@ impl From<&TokenKind> for Precedence {
             TokenKind::Asterisk => Precedence::Product,
             TokenKind::Slash => Precedence::Product,
             TokenKind::LParen => Precedence::Call,
+            TokenKind::By => Precedence::Range,
             TokenKind::LT | TokenKind::GT | TokenKind::LTEq | TokenKind::GTEq => {
                 Precedence::LessGreater
             }
@@ -164,6 +165,7 @@ impl Parser {
         out.register_infix(TokenKind::NotEq, Self::parse_infix);
         out.register_infix(TokenKind::Using, Self::parse_infix);
         out.register_infix(TokenKind::Like, Self::parse_infix);
+        out.register_infix(TokenKind::By, Self::parse_infix);
 
         out.next_token();
         out.next_token();
@@ -307,6 +309,7 @@ impl Parser {
             self.next_token();
             let out = self.parse_join()?;
             join.push(out);
+            println!("Join state: {:?}", self);
         }
 
         let where_expr = if self.peek_token_is(TokenKind::Where) {
@@ -533,6 +536,7 @@ impl Parser {
             Some(TokenKind::NotEq) => InfixOperator::NotEq,
             Some(TokenKind::Using) => InfixOperator::Using,
             Some(TokenKind::Like) => InfixOperator::Like,
+            Some(TokenKind::By) => InfixOperator::By,
             _ => Err(ParserError::UnsupportedInfix(
                 self.cur_token.as_ref().get_kind().unwrap().clone(),
             ))?,

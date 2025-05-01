@@ -492,6 +492,8 @@ pub enum InfixOperator {
     Like,
     #[display(" <> ")]
     NotEq,
+    #[display(" BY ")]
+    By,
 }
 
 #[derive(Debug, Clone, PartialEq)]
