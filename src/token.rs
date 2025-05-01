@@ -131,6 +131,14 @@ pub enum TokenKind {
     #[display("LIKE")]
     Like,
 
+    /// UNION
+    #[display("UNION")]
+    Union,
+
+    /// ALL
+    #[display("ALL")]
+    All,
+
     /// =
     #[display("=")]
     Eq,
@@ -158,6 +166,10 @@ pub enum TokenKind {
     /// @
     #[display("@")]
     At,
+
+    /// ||
+    #[display("||")]
+    JoinStrings,
 
     Ident(String),
 
@@ -266,6 +278,8 @@ pub fn ident_map(ident: String) -> TokenKind {
         "not" => TokenKind::Not,
         "using" => TokenKind::Using,
         "like" => TokenKind::Like,
+        "union" => TokenKind::Union,
+        "all" => TokenKind::All,
         _ => TokenKind::Ident(ident),
     }
 }

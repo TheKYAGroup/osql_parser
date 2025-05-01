@@ -93,6 +93,10 @@ impl Lexer {
             '-' => TokenKind::Sub,
             ';' => TokenKind::Semicolon,
             '@' => TokenKind::At,
+            '|' if (self.peek_char_is('|')) => {
+                self.advance();
+                TokenKind::JoinStrings
+            }
             '\0' => None?,
             '"' | '\'' => {
                 let string = self.collect_string()?;

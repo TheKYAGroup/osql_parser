@@ -260,6 +260,7 @@ pub struct SelectExpression {
     pub where_expr: Option<ExpressionIdx>,
     pub join: Vec<Join>,
     pub group: Option<GroupBy>,
+    pub union: Vec<Union>,
 }
 
 impl FmtWithStore for SelectExpression {
@@ -428,6 +429,31 @@ impl FmtWithStore for Join {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Union {
+    pub union_type: UnionType,
+    pub expr: ExpressionIdx,
+}
+
+impl FmtWithStore for Union {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "{} UNION ", self.union_type)?;
+        self.expr.fmt_with_store(f, store)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum UnionType {
+    #[display("ALL")]
+    All,
+}
+
 #[derive(Debug, Clone, PartialEq, Display)]
 pub enum JoinType {
     #[display("INNER")]
@@ -494,6 +520,8 @@ pub enum InfixOperator {
     NotEq,
     #[display(" BY ")]
     By,
+    #[display(" || ")]
+    JoinStrings,
 }
 
 #[derive(Debug, Clone, PartialEq)]

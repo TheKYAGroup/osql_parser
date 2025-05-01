@@ -6,7 +6,7 @@ use crate::{
     ast::{
         Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, GroupBy,
         IdentExpression, InfixOperator, IntExpression, Join, JoinType, Named, PrefixOperator,
-        Program, SelectExpression, Statement, When,
+        Program, SelectExpression, Statement, Union, UnionType, When,
     },
     lexer::Lexer,
     token::{GetKind, Loc, Token, TokenKind},
@@ -41,6 +41,7 @@ impl From<&TokenKind> for Precedence {
             TokenKind::Is => Precedence::Range,
             TokenKind::Using => Precedence::Range,
             TokenKind::Sub => Precedence::Sum,
+            TokenKind::JoinStrings => Precedence::Sum,
             TokenKind::Asterisk => Precedence::Product,
             TokenKind::Slash => Precedence::Product,
             TokenKind::LParen => Precedence::Call,
@@ -166,6 +167,7 @@ impl Parser {
         out.register_infix(TokenKind::Using, Self::parse_infix);
         out.register_infix(TokenKind::Like, Self::parse_infix);
         out.register_infix(TokenKind::By, Self::parse_infix);
+        out.register_infix(TokenKind::JoinStrings, Self::parse_infix);
 
         out.next_token();
         out.next_token();
@@ -309,7 +311,6 @@ impl Parser {
             self.next_token();
             let out = self.parse_join()?;
             join.push(out);
-            println!("Join state: {:?}", self);
         }
 
         let where_expr = if self.peek_token_is(TokenKind::Where) {
@@ -328,6 +329,14 @@ impl Parser {
             None
         };
 
+        let mut union = vec![];
+
+        while self.peek_token_is(TokenKind::Union) {
+            self.next_token();
+            let out = self.parse_union()?;
+            union.push(out);
+        }
+
         let end = self.cur_token.as_ref().unwrap().end.clone();
 
         Ok(self.expr_store.add(Expression {
@@ -337,6 +346,7 @@ impl Parser {
                 where_expr,
                 join,
                 group,
+                union,
             }),
             start,
             end,
@@ -370,6 +380,20 @@ impl Parser {
             expr,
             on,
         })
+    }
+
+    fn parse_union(&mut self) -> Result<Union> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Union));
+        let union_type = match self.peek_token.get_kind() {
+            Some(TokenKind::All) => UnionType::All,
+            _ => panic!("Unsupported union type: {:?}", self.cur_token),
+        };
+        self.next_token();
+        self.next_token();
+
+        let expr = self.parse_expression(Precedence::Lowest)?;
+
+        Ok(Union { union_type, expr })
     }
 
     fn parse_as(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
@@ -537,6 +561,7 @@ impl Parser {
             Some(TokenKind::Using) => InfixOperator::Using,
             Some(TokenKind::Like) => InfixOperator::Like,
             Some(TokenKind::By) => InfixOperator::By,
+            Some(TokenKind::JoinStrings) => InfixOperator::JoinStrings,
             _ => Err(ParserError::UnsupportedInfix(
                 self.cur_token.as_ref().get_kind().unwrap().clone(),
             ))?,
