@@ -480,6 +480,17 @@ impl Parser {
     fn parse_named(&mut self) -> Result<Named> {
         let expr = self.parse_expression(Precedence::Lowest)?;
 
+        match self.expr_store.get_ref(&expr).unwrap() {
+            Expression {
+                inner: ExpressionInner::Named(named),
+                ..
+            } => {
+                let out = named.clone();
+                _ = self.expr_store.remove(expr);
+                return Ok(out);
+            }
+            _ => {}
+        };
         let name = if self.peek_token_in(&[TokenKind::ident(""), TokenKind::string("")]) {
             self.next_token();
             Some(self.parse_ident_unwrap()?)
