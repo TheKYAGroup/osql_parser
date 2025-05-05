@@ -412,8 +412,8 @@ impl Parser {
         assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Union));
         let union_type = match self.peek_token.get_kind() {
             Some(TokenKind::All) => UnionType::All,
-            Some(TokenKind::Select) => UnionType::None,
-            _ => panic!("Unsupported union type: {:?}", self),
+            Some(_) => UnionType::None,
+            _ => return Err(ParserError::UnexpectedEOF.into()),
         };
         self.next_token();
         if union_type != UnionType::None {
