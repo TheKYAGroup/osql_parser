@@ -297,6 +297,14 @@ impl Parser {
 
         self.next_token();
 
+        let distinct = match self.cur_token.get_kind() {
+            Some(TokenKind::Distinct) => {
+                self.next_token();
+                true
+            }
+            _ => false,
+        };
+
         let columns = match self.cur_token.get_kind() {
             None => return Err(ParserError::PartialSelectExpr)?,
             Some(TokenKind::Asterisk) => Columns::All,
@@ -326,7 +334,7 @@ impl Parser {
 
         let mut join = vec![];
 
-        let join_things = &[TokenKind::Inner, TokenKind::Left];
+        let join_things = &[TokenKind::Inner, TokenKind::Left, TokenKind::Full];
 
         while self.peek_token_in(join_things) {
             self.next_token();
@@ -362,6 +370,7 @@ impl Parser {
 
         Ok(self.expr_store.add(Expression {
             inner: ExpressionInner::Select(SelectExpression {
+                distinct,
                 columns,
                 from,
                 where_expr,
@@ -381,11 +390,16 @@ impl Parser {
                 Some(TokenKind::Outer) => JoinType::Outer(crate::ast::OuterJoinDirection::Left),
                 _ => JoinType::Left,
             },
+            Some(TokenKind::Full) if self.peek_token.get_kind() == Some(&TokenKind::Outer) => {
+                JoinType::Outer(crate::ast::OuterJoinDirection::Full)
+            }
             _ => panic!("Unsupported join type: {:?}", self.cur_token),
         };
 
         match join_type {
-            JoinType::Outer(crate::ast::OuterJoinDirection::Left) => self.next_token(),
+            JoinType::Outer(
+                crate::ast::OuterJoinDirection::Left | crate::ast::OuterJoinDirection::Full,
+            ) => self.next_token(),
             _ => {}
         };
 
@@ -980,6 +994,7 @@ mod tests {
                 join: vec![],
                 group: None,
                 union: vec![],
+                distinct: false,
             }
         };
 
@@ -1028,6 +1043,7 @@ mod tests {
                         join: vec![],
                         group: None,
                         union: vec![],
+                        distinct: false,
                     })
                     .into(),
                 ),
@@ -1066,6 +1082,7 @@ mod tests {
             SelectExpression {
                 group: None,
                 union: vec![],
+                distinct: false,
                 columns: crate::ast::Columns::All,
                 from: Named {
                     expr: store.add(
@@ -1103,6 +1120,7 @@ mod tests {
                                 where_expr: None,
                                 join: vec![],
                                 union: vec![],
+                                distinct: false,
                             })
                             .into(),
                         )
@@ -1342,6 +1360,7 @@ mod tests {
                 join: vec![],
                 group: None,
                 union: vec![],
+                distinct: false,
             }
         };
 

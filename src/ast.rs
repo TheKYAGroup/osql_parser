@@ -266,6 +266,7 @@ impl FmtWithStore for GroupedExpression {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SelectExpression {
+    pub distinct: bool,
     pub columns: Columns,
     pub from: Named,
     pub where_expr: Option<ExpressionIdx>,
@@ -281,6 +282,9 @@ impl FmtWithStore for SelectExpression {
         store: &ExpressionStore,
     ) -> std::fmt::Result {
         write!(f, "SELECT ")?;
+        if self.distinct {
+            write!(f, "DISTINCT ")?;
+        }
         write_store!(f, store, self.columns)?;
         write!(f, " FROM ")?;
         write_store!(f, store, self.from)?;
@@ -479,6 +483,8 @@ pub enum JoinType {
 
 #[derive(Debug, Clone, PartialEq, Display)]
 pub enum OuterJoinDirection {
+    #[display("FULL")]
+    Full,
     #[display("LEFT")]
     Left,
     #[display("")]

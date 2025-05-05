@@ -151,6 +151,13 @@ pub enum TokenKind {
     #[display("OUTER")]
     Outer,
 
+    /// DISTINCT
+    #[display("DISTINCT")]
+    Distinct,
+    /// FULL
+    #[display("FULL")]
+    Full,
+
     /// =
     #[display("=")]
     Eq,
@@ -303,6 +310,8 @@ pub fn ident_map(ident: String) -> TokenKind {
         "date" => TokenKind::Date,
         "between" => TokenKind::Between,
         "outer" => TokenKind::Outer,
+        "distinct" => TokenKind::Distinct,
+        "full" => TokenKind::Full,
         _ => TokenKind::Ident(ident),
     }
 }
