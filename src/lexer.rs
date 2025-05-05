@@ -76,6 +76,10 @@ impl Lexer {
             }
             '<' if (self.peek_char_is('>')) => {
                 self.advance();
+                TokenKind::UnEq
+            }
+            '!' if (self.peek_char_is('=')) => {
+                self.advance();
                 TokenKind::NotEq
             }
             '<' => TokenKind::LT,
@@ -90,6 +94,7 @@ impl Lexer {
 
             '=' => TokenKind::Eq,
             '*' => TokenKind::Asterisk,
+            '+' => TokenKind::Plus,
             '-' => TokenKind::Sub,
             ';' => TokenKind::Semicolon,
             '@' => TokenKind::At,

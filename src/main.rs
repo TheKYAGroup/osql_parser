@@ -33,8 +33,8 @@ fn main() {
             match got {
                 None => {}
                 Some(tok) => {
-                    eprintln!("{}", &input[0..tok.start.idx]);
-                    eprintln!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
+                    eprint!("{}", &input[0..tok.start.idx]);
+                    eprint!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
                     eprintln!("{}", &input[tok.end.idx..]);
                 }
             }
@@ -46,8 +46,8 @@ fn main() {
         }) => {
             eprintln!("Backtrace: {}", backtrace);
             eprintln!("No prefix parse function for: {}", tok.kind);
-            eprintln!("{}", &input[0..tok.start.idx]);
-            eprintln!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
+            eprint!("{}", &input[0..tok.start.idx]);
+            eprint!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
             eprintln!("{}", &input[tok.end.idx..]);
             panic!()
         }

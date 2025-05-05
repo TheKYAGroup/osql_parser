@@ -139,17 +139,33 @@ pub enum TokenKind {
     #[display("ALL")]
     All,
 
+    /// DATE
+    #[display("DATE")]
+    Date,
+
+    /// BETWEEN
+    #[display("BETWEEN")]
+    Between,
+
     /// =
     #[display("=")]
     Eq,
 
     /// <>
     #[display("<>")]
+    UnEq,
+
+    /// !=
+    #[display("!=")]
     NotEq,
 
     /// *
     #[display("*")]
     Asterisk,
+
+    /// +
+    #[display("+")]
+    Plus,
 
     /// -
     #[display("-")]
@@ -280,6 +296,8 @@ pub fn ident_map(ident: String) -> TokenKind {
         "like" => TokenKind::Like,
         "union" => TokenKind::Union,
         "all" => TokenKind::All,
+        "date" => TokenKind::Date,
+        "between" => TokenKind::Between,
         _ => TokenKind::Ident(ident),
     }
 }

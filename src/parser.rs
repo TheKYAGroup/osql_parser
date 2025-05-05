@@ -4,23 +4,30 @@ use thiserror::Error;
 
 use crate::{
     ast::{
-        Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, GroupBy,
-        IdentExpression, InfixOperator, IntExpression, Join, JoinType, Named, PrefixOperator,
-        Program, SelectExpression, Statement, Union, UnionType, When,
+        Between, Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, GroupBy,
+        IdentExpression, InfixOperator, IntExpression, Join, JoinType, Named, NotInfixOperator,
+        PrefixOperator, Program, SelectExpression, Statement, Union, UnionType, When,
     },
     lexer::Lexer,
     token::{GetKind, Loc, Token, TokenKind},
 };
 
+///
+///
+/// ```rust
+/// use osql_parser::parser::Precedence;
+/// assert!(Precedence::And < Precedence::Range)
+/// ```
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum Precedence {
     Lowest,
     As,
+    Or,
+    And,
+    Not,
+    Range,
     Equals,
     LessGreater,
-    Range,
-    And,
-    Or,
     Sum,
     Product,
     Prefix,
@@ -31,16 +38,20 @@ pub enum Precedence {
 impl From<&TokenKind> for Precedence {
     fn from(value: &TokenKind) -> Self {
         match value {
-            TokenKind::Not => Precedence::Prefix,
+            TokenKind::Not => Precedence::Not,
+            TokenKind::Date => Precedence::Prefix,
             TokenKind::As => Precedence::As,
             TokenKind::Eq => Precedence::Equals,
+            TokenKind::UnEq => Precedence::Equals,
             TokenKind::NotEq => Precedence::Equals,
             TokenKind::Period => Precedence::Access,
             TokenKind::In => Precedence::Range,
             TokenKind::Like => Precedence::Range,
             TokenKind::Is => Precedence::Range,
             TokenKind::Using => Precedence::Range,
+            TokenKind::Between => Precedence::Range,
             TokenKind::Sub => Precedence::Sum,
+            TokenKind::Plus => Precedence::Sum,
             TokenKind::JoinStrings => Precedence::Sum,
             TokenKind::Asterisk => Precedence::Product,
             TokenKind::Slash => Precedence::Product,
@@ -75,6 +86,9 @@ pub enum ParserError {
 
     #[error("Unsupported infix operator: {0:?}")]
     UnsupportedInfix(TokenKind),
+
+    #[error("Unsupported not operator: {0:?}")]
+    UnsupportedNot(TokenKind),
 
     #[error("Unsupported prefix operator: {0:?}")]
     UnsupportedPrefix(TokenKind),
@@ -147,11 +161,13 @@ impl Parser {
         out.register_prefix(TokenKind::At, Self::parse_null_or);
         out.register_prefix(TokenKind::Null, Self::parse_null);
         out.register_prefix(TokenKind::Not, Self::parse_prefix);
+        out.register_prefix(TokenKind::Date, Self::parse_prefix);
 
         out.register_infix(TokenKind::Period, Self::parse_infix);
         out.register_infix(TokenKind::Eq, Self::parse_infix);
-        out.register_infix(TokenKind::In, Self::parse_in);
+        out.register_infix(TokenKind::In, Self::parse_not_infix);
         out.register_infix(TokenKind::Sub, Self::parse_infix);
+        out.register_infix(TokenKind::Plus, Self::parse_infix);
         out.register_infix(TokenKind::Slash, Self::parse_infix);
         out.register_infix(TokenKind::Asterisk, Self::parse_infix);
         out.register_infix(TokenKind::LT, Self::parse_infix);
@@ -163,11 +179,14 @@ impl Parser {
         out.register_infix(TokenKind::Or, Self::parse_infix);
         out.register_infix(TokenKind::As, Self::parse_as);
         out.register_infix(TokenKind::Is, Self::parse_infix);
+        out.register_infix(TokenKind::UnEq, Self::parse_infix);
         out.register_infix(TokenKind::NotEq, Self::parse_infix);
         out.register_infix(TokenKind::Using, Self::parse_infix);
-        out.register_infix(TokenKind::Like, Self::parse_infix);
+        out.register_infix(TokenKind::Like, Self::parse_not_infix);
         out.register_infix(TokenKind::By, Self::parse_infix);
         out.register_infix(TokenKind::JoinStrings, Self::parse_infix);
+        out.register_infix(TokenKind::Between, Self::parse_between);
+        out.register_infix(TokenKind::Not, Self::parse_not_infix);
 
         out.next_token();
         out.next_token();
@@ -284,7 +303,9 @@ impl Parser {
             _ => {
                 let mut columns = vec![self.parse_column()?];
 
-                self.next_token();
+                if self.peek_token_is(TokenKind::Comma) {
+                    self.next_token();
+                }
 
                 while self.cur_token.get_kind() == Some(&TokenKind::Comma) {
                     self.next_token();
@@ -356,8 +377,13 @@ impl Parser {
     fn parse_join(&mut self) -> Result<Join> {
         let join_type = match self.cur_token.get_kind() {
             Some(TokenKind::Inner) => JoinType::Inner,
-            Some(TokenKind::Left) => JoinType::Left,
+            Some(TokenKind::Left) => JoinType::Outer(crate::ast::OuterJoinDirection::Left),
             _ => panic!("Unsupported join type: {:?}", self.cur_token),
+        };
+
+        match join_type {
+            JoinType::Outer(crate::ast::OuterJoinDirection::Left) => self.next_token(),
+            _ => {}
         };
 
         self.expect_peek(TokenKind::Join)?;
@@ -386,10 +412,13 @@ impl Parser {
         assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Union));
         let union_type = match self.peek_token.get_kind() {
             Some(TokenKind::All) => UnionType::All,
-            _ => panic!("Unsupported union type: {:?}", self.cur_token),
+            Some(TokenKind::Select) => UnionType::None,
+            _ => panic!("Unsupported union type: {:?}", self),
         };
         self.next_token();
-        self.next_token();
+        if union_type != UnionType::None {
+            self.next_token();
+        }
 
         let expr = self.parse_expression(Precedence::Lowest)?;
 
@@ -403,7 +432,20 @@ impl Parser {
 
         self.next_token();
 
-        let right = self.parse_ident()?;
+        let right = match &self.cur_token {
+            Some(Token {
+                kind: TokenKind::Date,
+                start,
+                end,
+            }) => self.new_expr_idx(Expression {
+                inner: ExpressionInner::Ident(IdentExpression {
+                    ident: "date".to_string(),
+                }),
+                start: start.clone(),
+                end: end.clone(),
+            }),
+            _ => self.parse_ident()?,
+        };
         let ExpressionInner::Ident(ident) = self.expr_store.remove(right).unwrap().inner else {
             unreachable!()
         };
@@ -440,10 +482,12 @@ impl Parser {
             Some(TokenKind::String(str)) => format!("\"{}\"", str),
             Some(TokenKind::Ident(str)) => str.clone(),
             None => Err(ParserError::UnexpectedEOF)?,
-            _ => panic!(
-                "Called parse_ident with unsupported token type: {:?}",
-                self.cur_token
-            ),
+            _ => {
+                panic!(
+                    "Called parse_ident with unsupported token type: {:?}",
+                    self.cur_token
+                )
+            }
         };
         Ok(IdentExpression { ident })
     }
@@ -491,7 +535,7 @@ impl Parser {
             Some(TokenKind::Integer(str)) => str.parse().map_err(ParserError::from)?,
             None => Err(ParserError::UnexpectedEOF)?,
             _ => panic!(
-                "Called parse_ident with unsupported token type: {:?}",
+                "Called parse_int with unsupported token type: {:?}",
                 self.cur_token
             ),
         };
@@ -519,28 +563,6 @@ impl Parser {
         tokens.contains(peek_tok)
     }
 
-    fn parse_in(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
-        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::In));
-
-        let start = self.get_expr_start(&left);
-
-        self.next_token();
-
-        let arr = self.parse_array()?;
-
-        let right = self.new_expr_idx(ExpressionInner::Array(crate::ast::Array { arr }).into());
-
-        let end = self.get_end().unwrap();
-
-        let inner = ExpressionInner::Infix(crate::ast::InfixExpression {
-            left,
-            op: InfixOperator::In,
-            right,
-        });
-
-        Ok(self.new_expr_idx(Expression { start, inner, end }))
-    }
-
     fn parse_infix(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
         let start = self.get_expr_start(&left);
         let op = match self.cur_token.get_kind() {
@@ -548,6 +570,7 @@ impl Parser {
             Some(TokenKind::Period) => InfixOperator::Period,
             Some(TokenKind::Eq) => InfixOperator::Eq,
             Some(TokenKind::Sub) => InfixOperator::Sub,
+            Some(TokenKind::Plus) => InfixOperator::Add,
             Some(TokenKind::Slash) => InfixOperator::Div,
             Some(TokenKind::Asterisk) => InfixOperator::Mul,
             Some(TokenKind::LT) => InfixOperator::LT,
@@ -557,9 +580,10 @@ impl Parser {
             Some(TokenKind::And) => InfixOperator::And,
             Some(TokenKind::Or) => InfixOperator::Or,
             Some(TokenKind::Is) => InfixOperator::Is,
+            Some(TokenKind::UnEq) => InfixOperator::UnEq,
             Some(TokenKind::NotEq) => InfixOperator::NotEq,
+            Some(TokenKind::Not) => InfixOperator::NotEq,
             Some(TokenKind::Using) => InfixOperator::Using,
-            Some(TokenKind::Like) => InfixOperator::Like,
             Some(TokenKind::By) => InfixOperator::By,
             Some(TokenKind::JoinStrings) => InfixOperator::JoinStrings,
             _ => Err(ParserError::UnsupportedInfix(
@@ -588,6 +612,25 @@ impl Parser {
         let args = self.parse_array()?;
 
         let inner = ExpressionInner::FunctionCall(crate::ast::FunctionCall { func: left, args });
+
+        let end = self.get_end().unwrap();
+
+        Ok(self.new_expr_idx(Expression { inner, start, end }))
+    }
+
+    fn parse_array_infix(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Comma));
+        let start = self.get_expr_start(&left);
+        let mut arr = vec![left];
+        self.next_token();
+        arr.push(self.parse_expression(Precedence::Lowest)?);
+        while self.peek_token_is(TokenKind::Comma) {
+            self.next_token();
+            self.next_token();
+            arr.push(self.parse_expression(Precedence::Lowest)?);
+        }
+
+        let inner = ExpressionInner::Array(crate::ast::Array { arr });
 
         let end = self.get_end().unwrap();
 
@@ -628,7 +671,12 @@ impl Parser {
 
         self.next_token();
 
-        let exp = self.parse_expression(Precedence::Lowest)?;
+        let mut exp = self.parse_expression(Precedence::Lowest)?;
+
+        if self.peek_token.get_kind() == Some(&TokenKind::Comma) {
+            self.next_token();
+            exp = self.parse_array_infix(exp)?;
+        }
 
         self.expect_peek(TokenKind::RParen)?;
 
@@ -687,6 +735,7 @@ impl Parser {
                     end,
                 }));
             }
+            Some(TokenKind::Date) => PrefixOperator::Date,
             _ => Err(ParserError::UnsupportedPrefix(
                 self.cur_token.as_ref().get_kind().unwrap().clone(),
             ))?,
@@ -694,7 +743,7 @@ impl Parser {
 
         self.next_token();
 
-        let right = self.parse_expression(Precedence::Lowest)?;
+        let right = self.parse_expression(Precedence::Prefix)?;
 
         let end = self.get_end().unwrap();
 
@@ -773,6 +822,64 @@ impl Parser {
         let by = self.parse_expression(Precedence::Lowest)?;
 
         Ok(GroupBy { by })
+    }
+
+    fn parse_between(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Between));
+
+        let start = self.get_expr_start(&left);
+
+        self.next_token();
+
+        let lower = self.parse_expression(Precedence::Range)?;
+        self.expect_peek(TokenKind::And)?;
+        self.next_token();
+        let upper = self.parse_expression(Precedence::Lowest)?;
+
+        let end = self.get_end().unwrap();
+
+        let inner = ExpressionInner::Between(Between { left, lower, upper });
+
+        Ok(self.new_expr_idx(Expression { start, inner, end }))
+    }
+
+    fn parse_not_infix(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
+        let not = match self.cur_token.get_kind() {
+            Some(TokenKind::Not) => true,
+            _ => false,
+        };
+
+        let start = self.get_expr_start(&left);
+
+        if not {
+            self.next_token();
+        }
+
+        let op = match self.cur_token.get_kind() {
+            None => panic!("Called parse_not_infix with cur_token = None"),
+            Some(TokenKind::Like) => NotInfixOperator::Like,
+            Some(TokenKind::In) => NotInfixOperator::In,
+            _ => Err(ParserError::UnsupportedInfix(
+                self.cur_token.as_ref().get_kind().unwrap().clone(),
+            ))?,
+        };
+
+        self.next_token();
+
+        let right = self.parse_expression(Precedence::Range)?;
+
+        let end = self.get_end().unwrap();
+
+        Ok(self.new_expr_idx(Expression {
+            inner: ExpressionInner::NotInfix(crate::ast::NotInfixExpression {
+                left,
+                not,
+                right,
+                op,
+            }),
+            start,
+            end,
+        }))
     }
 }
 
@@ -869,6 +976,7 @@ mod tests {
                 where_expr: None,
                 join: vec![],
                 group: None,
+                union: vec![],
             }
         };
 
@@ -916,6 +1024,7 @@ mod tests {
                         where_expr: None,
                         join: vec![],
                         group: None,
+                        union: vec![],
                     })
                     .into(),
                 ),
@@ -953,6 +1062,7 @@ mod tests {
 
             SelectExpression {
                 group: None,
+                union: vec![],
                 columns: crate::ast::Columns::All,
                 from: Named {
                     expr: store.add(
@@ -989,6 +1099,7 @@ mod tests {
                                 },
                                 where_expr: None,
                                 join: vec![],
+                                union: vec![],
                             })
                             .into(),
                         )
@@ -1063,14 +1174,26 @@ mod tests {
             (ExpressionInner::Ident(expected), ExpressionInner::Ident(got)) => {
                 assert_eq!(expected, got)
             }
-            _ => panic!("{:?}, {:?}", expected, got),
+            (ExpressionInner::Prefix(expected), ExpressionInner::Prefix(got)) => {
+                test_prefix(store, expected, got)
+            }
+            (expected, got) => assert_eq!(expected, got),
         }
+    }
+
+    fn test_prefix(
+        store: &ExpressionStore,
+        expected: &crate::ast::PrefixExpression,
+        got: &crate::ast::PrefixExpression,
+    ) {
+        assert_eq!(expected.op, got.op);
+        test_expression(store, &expected.right, &got.right);
     }
 
     fn test_select(store: &ExpressionStore, expected: &SelectExpression, got: &SelectExpression) {
         assert_eq!(expected.columns, got.columns);
         test_named(store, &expected.from, &got.from);
-        assert_eq!(expected.where_expr, got.where_expr);
+        test_optional_expr(store, &expected.where_expr, &got.where_expr);
         test_join(store, &expected.join, &got.join);
     }
 
@@ -1146,5 +1269,91 @@ mod tests {
                 }
             },
         };
+    }
+
+    #[test]
+    fn test_precedence() {
+        let input = "SELECT * FROM A WHERE 1 + 2 * -3 < 5";
+
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+
+        let mut program = parser.parse_program().unwrap();
+
+        let expected = {
+            let store = &mut program.store;
+
+            let expr = store.add(
+                ExpressionInner::Ident(IdentExpression {
+                    ident: "A".to_string(),
+                })
+                .into(),
+            );
+
+            let where_expr = {
+                let left = {
+                    let right = {
+                        let left = { store.add(ExpressionInner::Int(2.into()).into()) };
+                        let right = {
+                            let right = store.add(ExpressionInner::Int(3.into()).into());
+
+                            store.add(
+                                ExpressionInner::Prefix(crate::ast::PrefixExpression {
+                                    op: PrefixOperator::Sub,
+                                    right,
+                                })
+                                .into(),
+                            )
+                        };
+                        store.add(
+                            ExpressionInner::Infix(InfixExpression {
+                                left,
+                                op: InfixOperator::Mul,
+                                right,
+                            })
+                            .into(),
+                        )
+                    };
+                    let left = { store.add(ExpressionInner::Int(1.into()).into()) };
+                    store.add(
+                        ExpressionInner::Infix(InfixExpression {
+                            left,
+                            op: InfixOperator::Add,
+                            right,
+                        })
+                        .into(),
+                    )
+                };
+                let right = { store.add(ExpressionInner::Int(IntExpression { int: 5 }).into()) };
+                store.add(Expression::from(ExpressionInner::Infix(InfixExpression {
+                    left,
+                    op: InfixOperator::LT,
+                    right,
+                })))
+            };
+
+            SelectExpression {
+                columns: crate::ast::Columns::All,
+                from: Named { expr, name: None },
+                where_expr: Some(where_expr),
+                join: vec![],
+                group: None,
+                union: vec![],
+            }
+        };
+
+        println!("Program: {}", program);
+
+        let store = &program.store;
+
+        assert_eq!(program.statements.len(), 1);
+
+        let Statement::Expression(stmt) = &program.statements[0];
+
+        let ExpressionInner::Select(select) = &store.get_ref(stmt).unwrap().inner else {
+            unreachable!()
+        };
+
+        test_select(store, &expected, select);
     }
 }

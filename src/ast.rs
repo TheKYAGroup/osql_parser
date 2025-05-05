@@ -164,6 +164,15 @@ impl ExpressionStore {
 
         Some(expr.expr.clone())
     }
+
+    pub fn get_mut<'a>(&'a mut self, idx: &ExpressionIdx) -> Option<&'a mut Expression> {
+        let thing = self.inner.get_mut(idx.idx as usize)?;
+        if thing.uuid == idx.uuid {
+            Some(&mut thing.expr)
+        } else {
+            None
+        }
+    }
 }
 
 impl PartialEq for Expression {
@@ -188,6 +197,8 @@ pub enum ExpressionInner {
     Named(Named),
     NullOr(NullOr),
     Null(Null),
+    Between(Between),
+    NotInfix(NotInfixExpression),
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -452,14 +463,24 @@ impl FmtWithStore for Union {
 pub enum UnionType {
     #[display("ALL")]
     All,
+    #[display("")]
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq, Display)]
 pub enum JoinType {
     #[display("INNER")]
     Inner,
+    #[display("{_0} OUTER")]
+    Outer(OuterJoinDirection),
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum OuterJoinDirection {
     #[display("LEFT")]
     Left,
+    #[display("")]
+    None,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -490,14 +511,14 @@ pub enum InfixOperator {
     Period,
     #[display(" = ")]
     Eq,
-    #[display(" IN ")]
-    In,
     #[display(" - ")]
     Sub,
     #[display(" / ")]
     Div,
     #[display(" * ")]
     Mul,
+    #[display(" + ")]
+    Add,
     #[display(" < ")]
     LT,
     #[display(" > ")]
@@ -514,9 +535,9 @@ pub enum InfixOperator {
     Is,
     #[display(" USING ")]
     Using,
-    #[display(" LIKE ")]
-    Like,
     #[display(" <> ")]
+    UnEq,
+    #[display(" != ")]
     NotEq,
     #[display(" BY ")]
     By,
@@ -537,9 +558,44 @@ impl FmtWithStore for InfixExpression {
         f: &mut std::fmt::Formatter<'_>,
         store: &ExpressionStore,
     ) -> std::fmt::Result {
+        write!(f, "(")?;
         self.left.fmt_with_store(f, store)?;
         write!(f, "{}", self.op)?;
-        self.right.fmt_with_store(f, store)
+        self.right.fmt_with_store(f, store)?;
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum NotInfixOperator {
+    #[display(" LIKE ")]
+    Like,
+    #[display(" IN ")]
+    In,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NotInfixExpression {
+    pub left: ExpressionIdx,
+    pub not: bool,
+    pub op: NotInfixOperator,
+    pub right: ExpressionIdx,
+}
+
+impl FmtWithStore for NotInfixExpression {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "(")?;
+        self.left.fmt_with_store(f, store)?;
+        if self.not {
+            write!(f, " NOT")?;
+        }
+        write!(f, " {} ", self.op)?;
+        self.right.fmt_with_store(f, store)?;
+        write!(f, ")")
     }
 }
 
@@ -570,10 +626,12 @@ impl FmtWithStore for FunctionCall {
 
 #[derive(Debug, Clone, PartialEq, Display)]
 pub enum PrefixOperator {
-    #[display(" - ")]
+    #[display("-")]
     Sub,
     #[display(" NOT ")]
     Not,
+    #[display("date ")]
+    Date,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -588,8 +646,9 @@ impl FmtWithStore for PrefixExpression {
         f: &mut std::fmt::Formatter<'_>,
         store: &ExpressionStore,
     ) -> std::fmt::Result {
-        write!(f, "{}", self.op)?;
-        self.right.fmt_with_store(f, store)
+        write!(f, "({}", self.op)?;
+        self.right.fmt_with_store(f, store)?;
+        write!(f, ")")
     }
 }
 
@@ -599,8 +658,18 @@ pub struct IdentExpression {
 }
 
 #[derive(Debug, Clone, PartialEq, Display)]
+#[display("({int})")]
 pub struct IntExpression {
     pub int: i64,
+}
+
+impl<T> From<T> for IntExpression
+where
+    T: Into<i64>,
+{
+    fn from(value: T) -> Self {
+        IntExpression { int: value.into() }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -652,3 +721,24 @@ impl FmtWithStore for Array {
 #[derive(Debug, Clone, PartialEq, Display)]
 #[display("NULL")]
 pub struct Null;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Between {
+    pub left: ExpressionIdx,
+    pub lower: ExpressionIdx,
+    pub upper: ExpressionIdx,
+}
+
+impl FmtWithStore for Between {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        self.left.fmt_with_store(f, store)?;
+        write!(f, " BETWEEN ")?;
+        self.lower.fmt_with_store(f, store)?;
+        write!(f, " AND ")?;
+        self.upper.fmt_with_store(f, store)
+    }
+}
