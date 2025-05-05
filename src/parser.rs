@@ -377,7 +377,10 @@ impl Parser {
     fn parse_join(&mut self) -> Result<Join> {
         let join_type = match self.cur_token.get_kind() {
             Some(TokenKind::Inner) => JoinType::Inner,
-            Some(TokenKind::Left) => JoinType::Outer(crate::ast::OuterJoinDirection::Left),
+            Some(TokenKind::Left) => match self.peek_token.get_kind() {
+                Some(TokenKind::Outer) => JoinType::Outer(crate::ast::OuterJoinDirection::Left),
+                _ => JoinType::Left,
+            },
             _ => panic!("Unsupported join type: {:?}", self.cur_token),
         };
 

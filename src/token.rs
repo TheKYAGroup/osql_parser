@@ -147,6 +147,10 @@ pub enum TokenKind {
     #[display("BETWEEN")]
     Between,
 
+    /// OUTER
+    #[display("OUTER")]
+    Outer,
+
     /// =
     #[display("=")]
     Eq,
@@ -298,6 +302,7 @@ pub fn ident_map(ident: String) -> TokenKind {
         "all" => TokenKind::All,
         "date" => TokenKind::Date,
         "between" => TokenKind::Between,
+        "outer" => TokenKind::Outer,
         _ => TokenKind::Ident(ident),
     }
 }

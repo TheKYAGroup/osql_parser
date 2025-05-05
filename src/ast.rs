@@ -471,6 +471,8 @@ pub enum UnionType {
 pub enum JoinType {
     #[display("INNER")]
     Inner,
+    #[display("LEFT")]
+    Left,
     #[display("{_0} OUTER")]
     Outer(OuterJoinDirection),
 }
