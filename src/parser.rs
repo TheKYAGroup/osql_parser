@@ -847,7 +847,11 @@ impl Parser {
 
         self.next_token();
 
-        let by = self.parse_expression(Precedence::Lowest)?;
+        let mut by = self.parse_expression(Precedence::Lowest)?;
+        if self.peek_token_is(TokenKind::Comma) {
+            self.next_token();
+            by = self.parse_array_infix(by)?;
+        }
 
         Ok(GroupBy { by })
     }

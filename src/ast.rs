@@ -48,6 +48,15 @@ impl Display for Program {
     }
 }
 
+impl Program {
+    pub fn get_outer_cols(&self) -> Vec<String> {
+        match self.statements.first() {
+            Some(Statement::Expression(expr)) => expr.get_outer_cols(&self.store, true),
+            _ => vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Expression(ExpressionIdx),
@@ -74,6 +83,62 @@ impl FmtWithStore for Expression {
 pub struct ExpressionIdx {
     uuid: Uuid,
     idx: u32,
+}
+
+impl ExpressionIdx {
+    fn get_outer_cols(&self, store: &ExpressionStore, add_name: bool) -> Vec<String> {
+        let Some(expr) = store.get_ref(self) else {
+            return vec![];
+        };
+
+        match &expr.inner {
+            ExpressionInner::Grouped(grouped) => {
+                let cols = grouped.inner.get_outer_cols(store, false);
+
+                match &grouped.name {
+                    Some(name) if add_name => {
+                        cols.iter().map(|col| format!("{}.{}", name, col)).collect()
+                    }
+                    _ => cols,
+                }
+            }
+            ExpressionInner::Select(sel) => {
+                let union_cols = sel
+                    .union
+                    .iter()
+                    .map(|union| union.expr.get_outer_cols(store, false))
+                    .flatten();
+
+                let mut main = match &sel.columns {
+                    Columns::All => sel
+                        .join
+                        .iter()
+                        .map(|join| join.expr.get_outer_cols(store, false))
+                        .flatten()
+                        .collect::<Vec<_>>(),
+                    Columns::Individual(nameds) => nameds
+                        .iter()
+                        .map(|named| match &named.name {
+                            Some(name) => vec![name.ident.clone()],
+                            None => named.expr.get_outer_cols(store, false),
+                        })
+                        .flatten()
+                        .collect::<Vec<_>>(),
+                };
+
+                main.extend(union_cols);
+
+                main
+            }
+            ExpressionInner::Ident(ident) => vec![ident.ident.clone()],
+            ExpressionInner::Infix(InfixExpression {
+                op: InfixOperator::Period,
+                right,
+                ..
+            }) => right.get_outer_cols(store, false),
+            _ => vec![],
+        }
+    }
 }
 
 impl FmtWithStore for ExpressionIdx {
@@ -748,5 +813,38 @@ impl FmtWithStore for Between {
         self.lower.fmt_with_store(f, store)?;
         write!(f, " AND ")?;
         self.upper.fmt_with_store(f, store)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{lexer::Lexer, parser::Parser};
+
+    #[test]
+    fn cols() {
+        let input = include_str!("test.sql");
+        let lexer = Lexer::new(input.to_string());
+        let mut parser = Parser::new(lexer);
+        let program = parser.parse_program().unwrap();
+        let cols = program.get_outer_cols();
+
+        let expected = vec![
+            "M.OrderEntryProjID",
+            "M.OrderEntryItemID",
+            "M.OrderEntryMemo",
+            "M.OrderEntryUnit",
+            "M.OrderEntryDocID",
+            "M.OrderEntryDocNO",
+            "M.OrderEntryDocParID",
+            "M.POItemID",
+            "M.POItemDesc",
+            "M.POSourceDocID",
+            "M.POUnit",
+            "M.PODocID",
+            "M.POQTY",
+            "M.POPrice",
+        ];
+
+        assert_eq!(cols, expected)
     }
 }
