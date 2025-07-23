@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, io::Read, path::Path, process::exit};
 
 use osql_parser::{
     lexer::Lexer,
@@ -34,11 +34,11 @@ fn main() {
                 None => {}
                 Some(tok) => {
                     eprint!("{}", &input[0..tok.start.idx]);
-                    eprint!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
+                    eprint!("\x1b[0;31m{}\x1b[0;37m", &input[tok.start.idx..tok.end.idx]);
                     eprintln!("{}", &input[tok.end.idx..]);
                 }
             }
-            panic!()
+            exit(1)
         }
         Err(ParserErrorWithBacktrace {
             inner: ParserError::NoPrefixParseFn(tok),
@@ -49,7 +49,7 @@ fn main() {
             eprint!("{}", &input[0..tok.start.idx]);
             eprint!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
             eprintln!("{}", &input[tok.end.idx..]);
-            panic!()
+            exit(1)
         }
         Err(err) => {
             println!("Backtrace: {}", err.backtrace);

@@ -67,7 +67,7 @@ impl From<&TokenKind> for Precedence {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum ParserError {
     #[error("No prefix parse function for token: {0:?}")]
     NoPrefixParseFn(Token),
@@ -132,7 +132,16 @@ pub struct Parser {
     expr_store: ExpressionStore,
 }
 
-type Result<T> = core::result::Result<T, ParserErrorWithBacktrace>;
+impl std::hash::Hash for Parser {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.lex.hash(state);
+        self.cur_token.hash(state);
+        self.peek_token.hash(state);
+        self.expr_store.hash(state);
+    }
+}
+
+pub type Result<T> = core::result::Result<T, ParserErrorWithBacktrace>;
 
 type PrefixParseFn = fn(&mut Parser) -> Result<ExpressionIdx>;
 type InfixParseFn = fn(&mut Parser, left: ExpressionIdx) -> Result<ExpressionIdx>;
@@ -155,7 +164,7 @@ impl Parser {
         out.register_prefix(TokenKind::string(""), Self::parse_ident);
         out.register_prefix(TokenKind::LParen, Self::parse_grouped);
         out.register_prefix(TokenKind::Case, Self::parse_case);
-        out.register_prefix(TokenKind::Integer("".to_string()), Self::parse_int);
+        out.register_prefix(TokenKind::Integer("".into()), Self::parse_int);
         out.register_prefix(TokenKind::Sub, Self::parse_prefix);
         out.register_prefix(TokenKind::Asterisk, Self::parse_prefix);
         out.register_prefix(TokenKind::At, Self::parse_null_or);
@@ -456,7 +465,7 @@ impl Parser {
                 end,
             }) => self.new_expr_idx(Expression {
                 inner: ExpressionInner::Ident(IdentExpression {
-                    ident: "date".to_string(),
+                    ident: "date".into(),
                 }),
                 start: start.clone(),
                 end: end.clone(),
@@ -507,7 +516,7 @@ impl Parser {
 
     fn parse_ident_unwrap(&mut self) -> Result<IdentExpression> {
         let ident = match &self.cur_token.get_kind() {
-            Some(TokenKind::String(str)) => format!("\"{}\"", str),
+            Some(TokenKind::String(str)) => ecow::eco_format!("\"{}\"", str),
             Some(TokenKind::Ident(str)) => str.clone(),
             None => Err(ParserError::UnexpectedEOF)?,
             _ => {
@@ -938,7 +947,7 @@ mod tests {
     fn call() {
         let input = "SELECT * FROM Hello WHERE ISNULL(Thing)";
 
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let program = unwrap_backtrace(parser.parse_program());
 
@@ -988,7 +997,7 @@ mod tests {
     fn simple_select() {
         let input = "SELECT * FROM Hello";
 
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let mut program = unwrap_backtrace(parser.parse_program());
 
@@ -997,7 +1006,7 @@ mod tests {
 
             let expr = store.add(
                 ExpressionInner::Ident(IdentExpression {
-                    ident: "Hello".to_string(),
+                    ident: "Hello".into(),
                 })
                 .into(),
             );
@@ -1031,7 +1040,7 @@ mod tests {
     fn grouped() {
         let input = "(SELECT * FROM Hello) M";
 
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let mut program = unwrap_backtrace(parser.parse_program());
 
@@ -1044,7 +1053,7 @@ mod tests {
 
             let expr = store.add(
                 ExpressionInner::Ident(IdentExpression {
-                    ident: "Hello".to_string(),
+                    ident: "Hello".into(),
                 })
                 .into(),
             );
@@ -1062,9 +1071,7 @@ mod tests {
                     })
                     .into(),
                 ),
-                name: Some(IdentExpression {
-                    ident: "M".to_string(),
-                }),
+                name: Some(IdentExpression { ident: "M".into() }),
             }
         };
 
@@ -1083,7 +1090,7 @@ mod tests {
             ON h.first = o.first
             "#;
 
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let mut program = unwrap_backtrace(parser.parse_program());
 
@@ -1102,13 +1109,11 @@ mod tests {
                 from: Named {
                     expr: store.add(
                         ExpressionInner::Ident(IdentExpression {
-                            ident: "Hello".to_string(),
+                            ident: "Hello".into(),
                         })
                         .into(),
                     ),
-                    name: Some(IdentExpression {
-                        ident: "h".to_string(),
-                    }),
+                    name: Some(IdentExpression { ident: "h".into() }),
                 },
                 where_expr: None,
                 join: vec![crate::ast::Join {
@@ -1117,7 +1122,7 @@ mod tests {
                         let expr = {
                             store.add(
                                 ExpressionInner::Ident(IdentExpression {
-                                    ident: "Other".to_string(),
+                                    ident: "Other".into(),
                                 })
                                 .into(),
                             )
@@ -1128,9 +1133,7 @@ mod tests {
                                 columns: crate::ast::Columns::All,
                                 from: Named {
                                     expr,
-                                    name: Some(IdentExpression {
-                                        ident: "o".to_string(),
-                                    }),
+                                    name: Some(IdentExpression { ident: "o".into() }),
                                 },
                                 where_expr: None,
                                 join: vec![],
@@ -1281,7 +1284,7 @@ mod tests {
     fn test_large() {
         let input = include_str!("./test.sql");
 
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         let _output = match parser.parse_program() {
             Ok(out) => out,
@@ -1311,7 +1314,7 @@ mod tests {
     fn test_precedence() {
         let input = "SELECT * FROM A WHERE 1 + 2 * -3 < 5";
 
-        let lexer = Lexer::new(input.to_string());
+        let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
 
         let mut program = parser.parse_program().unwrap();
@@ -1319,12 +1322,8 @@ mod tests {
         let expected = {
             let store = &mut program.store;
 
-            let expr = store.add(
-                ExpressionInner::Ident(IdentExpression {
-                    ident: "A".to_string(),
-                })
-                .into(),
-            );
+            let expr =
+                store.add(ExpressionInner::Ident(IdentExpression { ident: "A".into() }).into());
 
             let where_expr = {
                 let left = {

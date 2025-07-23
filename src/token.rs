@@ -1,6 +1,7 @@
 use std::{fmt::Display, hash::Hash, mem::discriminant, ops::Index};
 
 use derive_more::Display;
+use ecow::EcoString;
 
 #[derive(Debug, Clone, Eq, Display)]
 pub enum TokenKind {
@@ -198,21 +199,21 @@ pub enum TokenKind {
     #[display("||")]
     JoinStrings,
 
-    Ident(String),
+    Ident(EcoString),
 
-    String(String),
+    String(EcoString),
 
     #[display("/*{_0}*/")]
-    Comment(String),
+    Comment(EcoString),
 
     Unkown(char),
 
-    Whitespace(String),
+    Whitespace(EcoString),
 
-    Integer(String),
+    Integer(EcoString),
 }
 
-#[derive(derive_more::Debug, Clone, PartialEq)]
+#[derive(derive_more::Debug, Clone, PartialEq, Hash)]
 pub struct Token {
     pub kind: TokenKind,
     #[debug(skip)]
@@ -243,7 +244,7 @@ impl GetKind for Option<&Token> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Hash)]
 pub struct Loc {
     pub line: usize,
     pub col: usize,
@@ -272,15 +273,15 @@ impl PartialEq for TokenKind {
 
 impl TokenKind {
     pub fn ident(s: &str) -> Self {
-        TokenKind::Ident(s.to_string())
+        TokenKind::Ident(s.into())
     }
 
     pub fn string(s: &str) -> Self {
-        TokenKind::String(s.to_string())
+        TokenKind::String(s.into())
     }
 }
 
-pub fn ident_map(ident: String) -> TokenKind {
+pub fn ident_map(ident: EcoString) -> TokenKind {
     match ident.to_lowercase().as_str() {
         "select" => TokenKind::Select,
         "from" => TokenKind::From,

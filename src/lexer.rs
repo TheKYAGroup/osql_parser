@@ -1,8 +1,11 @@
+use comemo::memoize;
+use ecow::EcoString;
+
 use crate::token::{ident_map, Loc, Token, TokenKind};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash)]
 pub struct Lexer {
-    input: String,
+    input: EcoString,
     pos: usize,
     peek_pos: usize,
     ch: char,
@@ -10,17 +13,17 @@ pub struct Lexer {
     col: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct CollectedStr {
-    string: String,
+    string: EcoString,
     start: Loc,
     end: Loc,
 }
 
 impl Lexer {
-    pub fn new(input: String) -> Self {
+    pub fn new(input: impl Into<EcoString>) -> Self {
         let mut out = Self {
-            input,
+            input: input.into(),
             pos: 0,
             peek_pos: 0,
             ch: '\0',
@@ -141,6 +144,18 @@ impl Lexer {
         })
     }
 
+    #[memoize]
+    pub fn lex_all(self) -> Vec<Token> {
+        let mut lexer = self;
+        let mut out = vec![];
+
+        while let Some(tok) = lexer.next_token() {
+            out.push(tok);
+        }
+
+        out
+    }
+
     fn collect_while<F>(&mut self, cont: F) -> Option<CollectedStr>
     where
         F: Fn(char) -> bool,
@@ -165,7 +180,7 @@ impl Lexer {
 
         let end = self.cur_loc();
 
-        let string = self.input[start.idx..end.idx].to_string();
+        let string = EcoString::from(&self.input[start.idx..end.idx]);
 
         CollectedStr { string, start, end }
     }
@@ -240,7 +255,7 @@ impl Lexer {
             return None;
         }
 
-        let out = self.input[start.idx + 2..self.pos].to_string();
+        let out = EcoString::from(&self.input[start.idx + 2..self.pos]);
 
         assert_eq!(self.ch, '*');
         self.advance();
@@ -275,7 +290,7 @@ impl Lexer {
     }
 
     pub fn recreate(&self, tokens: Vec<Token>) -> String {
-        let mut out = self.input.clone();
+        let mut out = self.input.to_string();
 
         for tok in tokens.iter().rev() {
             let range = tok.start.idx..tok.end.idx;
@@ -364,7 +379,7 @@ mod test {
             },
         ];
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
 
         let mut toks = vec![];
 
@@ -418,20 +433,20 @@ mod test {
 
         let tests = vec![
             TokenKind::Comment(
-                "IFNULL(pd.TOTALCOMMITMENT - pd.TOTALINVOICED,0) OpenCommitmentTotal,".to_string(),
+                "IFNULL(pd.TOTALCOMMITMENT - pd.TOTALINVOICED,0) OpenCommitmentTotal,".into(),
             ),
             TokenKind::Comment(r#"Percent complete: IF((TOTAL COSTS/ESTIMATE COSTS)>1,1,((TOTAL COSTS/ESTIMATE COSTS)
       (can’t be above 100)
       Earned Revenue: Estimated revenue * percent complete
       Over/Under Billing: Earned Revenue - Total Billed
-      WIP Earned: Estimated Revenue - Earned Revenue "#.to_string()),
+      WIP Earned: Estimated Revenue - Earned Revenue "#.into()),
              TokenKind::Case,
              TokenKind::When,
              TokenKind::ident("IFNULL"),
              TokenKind::LParen,
         ];
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
 
         for tt in tests {
             let tok = lexer.next_token();
@@ -445,7 +460,7 @@ mod test {
         let input = include_str!("test.sql");
 
         let tests = vec![
-            TokenKind::Comment(" TEST PM Picklist ".to_string()),
+            TokenKind::Comment(" TEST PM Picklist ".into()),
             TokenKind::LParen,
             TokenKind::Select,
             TokenKind::ident("OrderEntry"),
@@ -701,7 +716,7 @@ mod test {
             TokenKind::ident("M"),
         ];
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
 
         let mut toks = vec![];
 
@@ -819,7 +834,7 @@ Test WHERE Hello = 1;"#;
                 },
             },
             Token {
-                kind: TokenKind::Integer("1".to_string()),
+                kind: TokenKind::Integer("1".into()),
                 start: Loc {
                     line: 3,
                     col: 19,
@@ -846,7 +861,7 @@ Test WHERE Hello = 1;"#;
             },
         ];
 
-        let mut lexer = Lexer::new(input.to_string());
+        let mut lexer = Lexer::new(input);
 
         for tt in tests {
             assert_eq!(tt, lexer.next_token().unwrap());

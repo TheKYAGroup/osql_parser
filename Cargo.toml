@@ -11,7 +11,9 @@ lto = "fat"
 
 [dependencies]
 ambassador = "0.4.1"
+comemo = "0.4.0"
 derive_more = { version = "2.0.1", features = ["debug", "display"] }
+ecow = "0.2.5"
 ntest = "0.9.3"
 thiserror = "2.0.12"
 uuid = { version = "1.16.0", features = ["v4"] }

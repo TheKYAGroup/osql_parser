@@ -1,7 +1,11 @@
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    hash::Hash,
+};
 
 use ambassador::{delegatable_trait, Delegate};
 use derive_more::Display;
+use ecow::EcoString;
 use uuid::Uuid;
 
 use crate::token::Loc;
@@ -49,7 +53,7 @@ impl Display for Program {
 }
 
 impl Program {
-    pub fn get_outer_cols(&self) -> Vec<String> {
+    pub fn get_outer_cols(&self) -> Vec<EcoString> {
         match self.statements.first() {
             Some(Statement::Expression(expr)) => expr.get_outer_cols(&self.store, true),
             _ => vec![],
@@ -79,14 +83,14 @@ impl FmtWithStore for Expression {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Hash)]
 pub struct ExpressionIdx {
     uuid: Uuid,
     idx: u32,
 }
 
 impl ExpressionIdx {
-    fn get_outer_cols(&self, store: &ExpressionStore, add_name: bool) -> Vec<String> {
+    fn get_outer_cols(&self, store: &ExpressionStore, add_name: bool) -> Vec<EcoString> {
         let Some(expr) = store.get_ref(self) else {
             return vec![];
         };
@@ -96,9 +100,10 @@ impl ExpressionIdx {
                 let cols = grouped.inner.get_outer_cols(store, false);
 
                 match &grouped.name {
-                    Some(name) if add_name => {
-                        cols.iter().map(|col| format!("{}.{}", name, col)).collect()
-                    }
+                    Some(name) if add_name => cols
+                        .iter()
+                        .map(|col| ecow::eco_format!("{}.{}", name, col))
+                        .collect(),
                     _ => cols,
                 }
             }
@@ -160,7 +165,13 @@ struct ExpressionWithUuid {
     expr: Expression,
 }
 
-#[derive(Clone)]
+impl Hash for ExpressionWithUuid {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.uuid.hash(state);
+    }
+}
+
+#[derive(Clone, Hash)]
 pub struct ExpressionStore {
     inner: Vec<ExpressionWithUuid>,
     unused: Vec<ExpressionIdx>,
@@ -299,9 +310,7 @@ impl ExpressionInner {
     #[cfg(test)]
     /// A helper function for writing tests
     pub(crate) fn ident(str: &str) -> Self {
-        ExpressionInner::Ident(IdentExpression {
-            ident: str.to_string(),
-        })
+        ExpressionInner::Ident(IdentExpression { ident: str.into() })
     }
 }
 
@@ -727,7 +736,7 @@ impl FmtWithStore for PrefixExpression {
 
 #[derive(Debug, Clone, PartialEq, Display)]
 pub struct IdentExpression {
-    pub ident: String,
+    pub ident: EcoString,
 }
 
 #[derive(Debug, Clone, PartialEq, Display)]
