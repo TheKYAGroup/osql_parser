@@ -90,7 +90,7 @@ pub struct ExpressionIdx {
 }
 
 impl ExpressionIdx {
-    fn get_outer_cols(&self, store: &ExpressionStore, add_name: bool) -> Vec<EcoString> {
+    pub fn get_outer_cols(&self, store: &ExpressionStore, add_name: bool) -> Vec<EcoString> {
         let Some(expr) = store.get_ref(self) else {
             return vec![];
         };
