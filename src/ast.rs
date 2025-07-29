@@ -99,7 +99,7 @@ impl FmtWithStore for Expression {
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Hash)]
+#[derive(Clone, PartialEq, Debug, Hash, Default)]
 pub struct ExpressionIdx {
     uuid: Uuid,
     idx: u32,
@@ -355,7 +355,7 @@ impl FmtWithStore for GroupedExpression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SelectExpression {
     pub distinct: bool,
     pub columns: Columns,
@@ -364,6 +364,7 @@ pub struct SelectExpression {
     pub join: Vec<Join>,
     pub group: Option<GroupBy>,
     pub union: Vec<Union>,
+    pub fetch: Option<Fetch>,
 }
 
 impl FmtWithStore for SelectExpression {
@@ -390,6 +391,10 @@ impl FmtWithStore for SelectExpression {
 
         if let Some(group) = &self.group {
             group.fmt_with_store(f, store)?;
+        }
+
+        if let Some(fetch) = &self.fetch {
+            fetch.fmt_with_store(f, store)?;
         }
 
         Ok(())
@@ -482,8 +487,9 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Columns {
+    #[default]
     All,
     Individual(Vec<Named>),
 }
@@ -554,6 +560,48 @@ impl FmtWithStore for Union {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fetch {
+    pub fetch_type: FetchType,
+    pub amount: Option<ExpressionIdx>,
+    pub rows: Rows,
+}
+
+impl FmtWithStore for Fetch {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        write!(f, "FETCH {} ", self.fetch_type,)?;
+
+        if let Some(amount) = &self.amount {
+            amount.fmt_with_store(f, store)?;
+            write!(f, " ")?;
+        }
+
+        write!(f, "{} ONLY", self.rows)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum FetchType {
+    #[display("FIRST")]
+    First,
+    #[display("NEXT")]
+    Next,
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum Rows {
+    #[display("FIRST")]
+    Row,
+    #[display("NEXT")]
+    Rows,
+}
+
 #[derive(Debug, Clone, PartialEq, Display)]
 pub enum UnionType {
     #[display("ALL")]
@@ -582,7 +630,7 @@ pub enum OuterJoinDirection {
     None,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Named {
     pub expr: ExpressionIdx,
     pub name: Option<IdentExpression>,
@@ -844,6 +892,8 @@ impl FmtWithStore for Between {
 
 #[cfg(test)]
 mod tests {
+    use ecow::EcoString;
+
     use crate::{lexer::Lexer, parser::Parser};
 
     #[test]
@@ -869,7 +919,10 @@ mod tests {
             "M.PODocID",
             "M.POQTY",
             "M.POPrice",
-        ];
+        ]
+        .into_iter()
+        .map(EcoString::from)
+        .collect();
 
         assert_eq!(cols, expected)
     }

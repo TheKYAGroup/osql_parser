@@ -17,3 +17,5 @@ ecow = "0.2.5"
 ntest = "0.9.3"
 thiserror = "2.0.12"
 uuid = { version = "1.16.0", features = ["v4"] }
+osql_parser_derive = { path = "./osql_parser_derive/" }
+proc-macro2 = "1.0.95"

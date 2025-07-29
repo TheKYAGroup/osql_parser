@@ -41,4 +41,6 @@ SELECT
    "po:Purchase Order"."Transaction detail Measures"."UIPRICE" Price,
    "po:Purchase Order"."Transaction detail Measures"."UIQTY" QTY
 FROM "po:Purchase Order") PO
-ON OrderEntry.ProjID = PO.ProjID) M
+ON OrderEntry.ProjID = PO.ProjID
+FETCH FIRST 500 ROWS ONLY
+) M

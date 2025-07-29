@@ -4,9 +4,10 @@ use thiserror::Error;
 
 use crate::{
     ast::{
-        Between, Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, GroupBy,
-        IdentExpression, InfixOperator, IntExpression, Join, JoinType, Named, NotInfixOperator,
-        PrefixOperator, Program, SelectExpression, Statement, Union, UnionType, When,
+        Between, Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, Fetch,
+        FetchType, GroupBy, IdentExpression, InfixOperator, IntExpression, Join, JoinType, Named,
+        NotInfixOperator, PrefixOperator, Program, Rows, SelectExpression, Statement, Union,
+        UnionType, When,
     },
     lexer::Lexer,
     token::{GetKind, Loc, Token, TokenKind},
@@ -96,6 +97,12 @@ pub enum ParserError {
     #[error("Peek failed for token: {expected}")]
     PeekFailed {
         expected: TokenKind,
+        got: Option<Token>,
+    },
+
+    #[error("Peek failed for token: {expected:?}")]
+    MultiPeekFailed {
+        expected: Vec<TokenKind>,
         got: Option<Token>,
     },
 
@@ -375,6 +382,13 @@ impl Parser {
             union.push(out);
         }
 
+        let fetch = if self.peek_token_is(TokenKind::Fetch) {
+            self.next_token();
+            Some(self.parse_fetch()?)
+        } else {
+            None
+        };
+
         let end = self.cur_token.as_ref().unwrap().end.clone();
 
         Ok(self.expr_store.add(Expression {
@@ -386,6 +400,7 @@ impl Parser {
                 join,
                 group,
                 union,
+                fetch,
             }),
             start,
             end,
@@ -850,6 +865,18 @@ impl Parser {
         }
     }
 
+    fn expect_peek_in(&mut self, token: &[TokenKind]) -> Result<()> {
+        if self.peek_token_in(token) {
+            self.next_token();
+            Ok(())
+        } else {
+            Err(ParserError::MultiPeekFailed {
+                expected: token.to_vec(),
+                got: self.peek_token.clone(),
+            })?
+        }
+    }
+
     fn parse_group_by(&mut self) -> Result<GroupBy> {
         assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Group));
         self.expect_peek(TokenKind::By)?;
@@ -921,6 +948,47 @@ impl Parser {
             start,
             end,
         }))
+    }
+
+    fn parse_fetch(&mut self) -> Result<Fetch> {
+        assert_eq!(
+            self.cur_token.get_kind(),
+            Some(&TokenKind::Fetch),
+            "Called parse_select when the cur_token is not FETCH",
+        );
+
+        self.expect_peek_in(&[TokenKind::First, TokenKind::Next])?;
+        let fetch_type = match self.cur_token.get_kind() {
+            Some(TokenKind::First) => FetchType::First,
+            Some(TokenKind::Next) => FetchType::Next,
+            _ => {
+                panic!("Got unexpected token for fetch_type: {:?}", self.peek_token)
+            }
+        };
+
+        self.next_token();
+
+        let amount = if self.peek_token_is(TokenKind::Row) {
+            None
+        } else {
+            Some(self.parse_int()?)
+        };
+
+        self.expect_peek_in(&[TokenKind::Rows, TokenKind::Row])?;
+
+        let rows = match self.cur_token.get_kind() {
+            Some(TokenKind::Rows) => Rows::Rows,
+            Some(TokenKind::Row) => Rows::Row,
+            _ => panic!("Got unexpected rows kind"),
+        };
+
+        self.next_token();
+
+        Ok(Fetch {
+            fetch_type,
+            amount,
+            rows,
+        })
     }
 }
 
@@ -1019,6 +1087,7 @@ mod tests {
                 group: None,
                 union: vec![],
                 distinct: false,
+                ..Default::default()
             }
         };
 
@@ -1068,6 +1137,7 @@ mod tests {
                         group: None,
                         union: vec![],
                         distinct: false,
+                        ..Default::default()
                     })
                     .into(),
                 ),
@@ -1087,7 +1157,7 @@ mod tests {
     #[timeout(1000)]
     fn inner_join() {
         let input = r#"SELECT * FROM Hello h INNER JOIN SELECT * FROM Other o
-            ON h.first = o.first
+            ON h.thing = o.thing
             "#;
 
         let lexer = Lexer::new(input);
@@ -1139,6 +1209,7 @@ mod tests {
                                 join: vec![],
                                 union: vec![],
                                 distinct: false,
+                                ..Default::default()
                             })
                             .into(),
                         )
@@ -1146,7 +1217,7 @@ mod tests {
                     on: {
                         let left = {
                             let left = store.add(ExpressionInner::ident("h").into());
-                            let right = store.add(ExpressionInner::ident("first").into());
+                            let right = store.add(ExpressionInner::ident("thing").into());
                             store.add(
                                 ExpressionInner::Infix(crate::ast::InfixExpression {
                                     left,
@@ -1159,7 +1230,7 @@ mod tests {
                         Some({
                             let right = {
                                 let left = store.add(ExpressionInner::ident("o").into());
-                                let right = store.add(ExpressionInner::ident("first").into());
+                                let right = store.add(ExpressionInner::ident("thing").into());
                                 store.add(
                                     ExpressionInner::Infix(crate::ast::InfixExpression {
                                         left,
@@ -1180,6 +1251,7 @@ mod tests {
                         })
                     },
                 }],
+                ..Default::default()
             }
         };
 
@@ -1375,6 +1447,7 @@ mod tests {
                 group: None,
                 union: vec![],
                 distinct: false,
+                ..Default::default()
             }
         };
 

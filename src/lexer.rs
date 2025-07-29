@@ -712,6 +712,11 @@ mod test {
             TokenKind::ident("PO"),
             TokenKind::Period,
             TokenKind::ident("ProjID"),
+            TokenKind::Fetch,
+            TokenKind::First,
+            TokenKind::Integer("500".into()),
+            TokenKind::Rows,
+            TokenKind::Only,
             TokenKind::RParen,
             TokenKind::ident("M"),
         ];

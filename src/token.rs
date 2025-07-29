@@ -2,8 +2,9 @@ use std::{fmt::Display, hash::Hash, mem::discriminant, ops::Index};
 
 use derive_more::Display;
 use ecow::EcoString;
+use osql_parser_derive::Ident;
 
-#[derive(Debug, Clone, Eq, Display)]
+#[derive(Debug, Clone, Eq, Display, Ident)]
 pub enum TokenKind {
     /// (
     #[display("(")]
@@ -42,122 +43,183 @@ pub enum TokenKind {
 
     /// FROM
     #[display("FROM")]
+    #[ident]
     From,
 
     /// WHERE
     #[display("WHERE")]
+    #[ident]
     Where,
 
     /// INNER
     #[display("INNER")]
+    #[ident]
     Inner,
 
     /// LEFT
     #[display("LEFT")]
+    #[ident]
     Left,
 
     /// JOIN
     #[display("JOIN")]
+    #[ident]
     Join,
 
     /// SELECT
     #[display("SELECT")]
+    #[ident]
     Select,
 
     /// ON
     #[display("ON")]
+    #[ident]
     On,
 
     /// IN
     #[display("IN")]
+    #[ident]
     In,
 
     /// CASE
     #[display("CASE")]
+    #[ident]
     Case,
 
     /// WHEN
     #[display("WHEN")]
+    #[ident]
     When,
 
     /// THEN
     #[display("THEN")]
+    #[ident]
     Then,
 
     /// ELSE
     #[display("ELSE")]
+    #[ident]
     Else,
 
     /// END
     #[display("END")]
+    #[ident]
     End,
 
     /// AS
     #[display("AS")]
+    #[ident]
     As,
 
     /// AND
     #[display("AND")]
+    #[ident]
     And,
 
     /// OR
     #[display("OR")]
+    #[ident]
     Or,
 
     /// GROUP
     #[display("GROUP")]
+    #[ident]
     Group,
 
     /// BY
     #[display("BY")]
+    #[ident]
     By,
 
     /// IS
     #[display("IS")]
+    #[ident]
     Is,
 
     /// NULL
     #[display("NULL")]
+    #[ident]
     Null,
 
     /// NOT
     #[display("NOT")]
+    #[ident]
     Not,
 
     /// USING
     #[display("USING")]
+    #[ident]
     Using,
 
     /// LIKE
     #[display("LIKE")]
+    #[ident]
     Like,
 
     /// UNION
     #[display("UNION")]
+    #[ident]
     Union,
 
     /// ALL
     #[display("ALL")]
+    #[ident]
     All,
 
     /// DATE
     #[display("DATE")]
+    #[ident]
     Date,
 
     /// BETWEEN
     #[display("BETWEEN")]
+    #[ident]
     Between,
 
     /// OUTER
     #[display("OUTER")]
+    #[ident]
     Outer,
 
     /// DISTINCT
+    #[ident]
     #[display("DISTINCT")]
     Distinct,
+
     /// FULL
     #[display("FULL")]
+    #[ident]
     Full,
+
+    /// FETCH
+    #[display("FETCH")]
+    #[ident]
+    Fetch,
+
+    /// FIRST
+    #[display("FIRST")]
+    #[ident]
+    First,
+
+    /// NEXT
+    #[display("NEXT")]
+    #[ident]
+    Next,
+
+    /// ROWS
+    #[display("ROWS")]
+    #[ident]
+    Rows,
+
+    /// ROW
+    #[display("ROW")]
+    #[ident]
+    Row,
+
+    /// ONLY
+    #[display("ONLY")]
+    #[ident]
+    Only,
 
     /// =
     #[display("=")]
@@ -282,37 +344,5 @@ impl TokenKind {
 }
 
 pub fn ident_map(ident: EcoString) -> TokenKind {
-    match ident.to_lowercase().as_str() {
-        "select" => TokenKind::Select,
-        "from" => TokenKind::From,
-        "where" => TokenKind::Where,
-        "inner" => TokenKind::Inner,
-        "join" => TokenKind::Join,
-        "on" => TokenKind::On,
-        "in" => TokenKind::In,
-        "case" => TokenKind::Case,
-        "when" => TokenKind::When,
-        "then" => TokenKind::Then,
-        "else" => TokenKind::Else,
-        "end" => TokenKind::End,
-        "as" => TokenKind::As,
-        "left" => TokenKind::Left,
-        "and" => TokenKind::And,
-        "or" => TokenKind::Or,
-        "group" => TokenKind::Group,
-        "by" => TokenKind::By,
-        "is" => TokenKind::Is,
-        "null" => TokenKind::Null,
-        "not" => TokenKind::Not,
-        "using" => TokenKind::Using,
-        "like" => TokenKind::Like,
-        "union" => TokenKind::Union,
-        "all" => TokenKind::All,
-        "date" => TokenKind::Date,
-        "between" => TokenKind::Between,
-        "outer" => TokenKind::Outer,
-        "distinct" => TokenKind::Distinct,
-        "full" => TokenKind::Full,
-        _ => TokenKind::Ident(ident),
-    }
+    TokenKind::ident_map(ident)
 }
