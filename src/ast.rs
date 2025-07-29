@@ -17,6 +17,21 @@ macro_rules! write_store {
     };
 }
 
+macro_rules! hash_set {
+    () => {
+        std::collections::HashSet::new()
+    };
+    ($($e:expr),*) => {
+        {
+            let mut set = std::collections::HashSet::new();
+            $(
+                _ = set.insert($e);
+            )*
+            set
+        }
+    };
+}
+
 #[derive(Clone)]
 pub struct Program {
     pub store: ExpressionStore,
@@ -54,10 +69,10 @@ impl Display for Program {
 }
 
 impl Program {
-    pub fn get_outer_cols(&self) -> Vec<EcoString> {
+    pub fn get_outer_cols(&self) -> HashSet<EcoString> {
         match self.statements.first() {
             Some(Statement::Expression(expr)) => expr.get_outer_cols(&self.store, true),
-            _ => vec![],
+            _ => hash_set![],
         }
     }
 }
@@ -91,9 +106,9 @@ pub struct ExpressionIdx {
 }
 
 impl ExpressionIdx {
-    pub fn get_outer_cols(&self, store: &ExpressionStore, add_name: bool) -> Vec<EcoString> {
+    pub fn get_outer_cols(&self, store: &ExpressionStore, add_name: bool) -> HashSet<EcoString> {
         let Some(expr) = store.get_ref(self) else {
-            return vec![];
+            return HashSet::new();
         };
 
         match &expr.inner {
@@ -116,34 +131,34 @@ impl ExpressionIdx {
                     .flatten()
                     .collect();
 
-                let mut main = match &sel.columns {
+                let mut main: HashSet<EcoString> = match &sel.columns {
                     Columns::All => sel
                         .join
                         .iter()
                         .map(|join| join.expr.get_outer_cols(store, false))
                         .flatten()
-                        .collect::<Vec<_>>(),
+                        .collect(),
                     Columns::Individual(nameds) => nameds
                         .iter()
                         .map(|named| match &named.name {
-                            Some(name) => vec![name.ident.clone()],
+                            Some(name) => hash_set![name.ident.clone()],
                             None => named.expr.get_outer_cols(store, false),
                         })
                         .flatten()
-                        .collect::<Vec<_>>(),
+                        .collect(),
                 };
 
                 main.extend(union_cols);
 
                 main
             }
-            ExpressionInner::Ident(ident) => vec![ident.ident.clone()],
+            ExpressionInner::Ident(ident) => hash_set![ident.ident.clone()],
             ExpressionInner::Infix(InfixExpression {
                 op: InfixOperator::Period,
                 right,
                 ..
             }) => right.get_outer_cols(store, false),
-            _ => vec![],
+            _ => hash_set![],
         }
     }
 }
