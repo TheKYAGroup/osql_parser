@@ -32,7 +32,7 @@ macro_rules! hash_set {
     };
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash)]
 pub struct Program {
     pub store: ExpressionStore,
     pub statements: Vec<Statement>,
@@ -77,7 +77,7 @@ impl Program {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum Statement {
     Expression(ExpressionIdx),
 }
