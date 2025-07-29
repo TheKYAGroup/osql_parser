@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::{Debug, Display},
     hash::Hash,
 };
@@ -108,11 +109,12 @@ impl ExpressionIdx {
                 }
             }
             ExpressionInner::Select(sel) => {
-                let union_cols = sel
+                let union_cols: HashSet<EcoString> = sel
                     .union
                     .iter()
                     .map(|union| union.expr.get_outer_cols(store, false))
-                    .flatten();
+                    .flatten()
+                    .collect();
 
                 let mut main = match &sel.columns {
                     Columns::All => sel
