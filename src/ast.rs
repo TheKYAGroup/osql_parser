@@ -9,7 +9,7 @@ use derive_more::Display;
 use ecow::EcoString;
 use uuid::Uuid;
 
-use crate::token::Loc;
+use crate::{oir::Span, token::Loc};
 
 macro_rules! write_store {
     ($dst:expr, $store:expr, $value:expr) => {
@@ -87,6 +87,15 @@ pub struct Expression {
     pub inner: ExpressionInner,
     pub start: Loc,
     pub end: Loc,
+}
+
+impl Expression {
+    pub fn span(&self) -> Span {
+        Span {
+            start: self.start.into(),
+            end: self.end.into(),
+        }
+    }
 }
 
 impl FmtWithStore for Expression {
@@ -634,6 +643,7 @@ pub enum OuterJoinDirection {
 pub struct Named {
     pub expr: ExpressionIdx,
     pub name: Option<IdentExpression>,
+    pub span: Span,
 }
 
 impl FmtWithStore for Named {

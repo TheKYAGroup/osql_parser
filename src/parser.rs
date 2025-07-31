@@ -10,6 +10,7 @@ use crate::{
         UnionType, When,
     },
     lexer::Lexer,
+    oir::Span,
     token::{GetKind, Loc, Token, TokenKind},
 };
 
@@ -496,12 +497,14 @@ impl Parser {
         let inner = ExpressionInner::Named(Named {
             expr: left,
             name: Some(ident),
+            span: Span { start, end },
         });
 
         Ok(self.new_expr_idx(Expression { start, inner, end }))
     }
 
     fn parse_named(&mut self) -> Result<Named> {
+        let start = self.get_start().unwrap();
         let expr = self.parse_expression(Precedence::Lowest)?;
 
         match self.expr_store.get_ref(&expr).unwrap() {
@@ -526,7 +529,13 @@ impl Parser {
             None
         };
 
-        Ok(Named { expr, name })
+        let end = self.get_end().unwrap();
+
+        Ok(Named {
+            expr,
+            name,
+            span: Span { start, end },
+        })
     }
 
     fn parse_ident_unwrap(&mut self) -> Result<IdentExpression> {
@@ -1081,7 +1090,11 @@ mod tests {
 
             SelectExpression {
                 columns: crate::ast::Columns::All,
-                from: Named { expr, name: None },
+                from: Named {
+                    expr,
+                    name: None,
+                    ..Default::default()
+                },
                 where_expr: None,
                 join: vec![],
                 group: None,
@@ -1131,7 +1144,11 @@ mod tests {
                 inner: store.add(
                     ExpressionInner::Select(SelectExpression {
                         columns: crate::ast::Columns::All,
-                        from: Named { expr, name: None },
+                        from: Named {
+                            expr,
+                            name: None,
+                            ..Default::default()
+                        },
                         where_expr: None,
                         join: vec![],
                         group: None,
@@ -1184,6 +1201,7 @@ mod tests {
                         .into(),
                     ),
                     name: Some(IdentExpression { ident: "h".into() }),
+                    ..Default::default()
                 },
                 where_expr: None,
                 join: vec![crate::ast::Join {
@@ -1204,6 +1222,7 @@ mod tests {
                                 from: Named {
                                     expr,
                                     name: Some(IdentExpression { ident: "o".into() }),
+                                    ..Default::default()
                                 },
                                 where_expr: None,
                                 join: vec![],
@@ -1441,7 +1460,11 @@ mod tests {
 
             SelectExpression {
                 columns: crate::ast::Columns::All,
-                from: Named { expr, name: None },
+                from: Named {
+                    expr,
+                    name: None,
+                    ..Default::default()
+                },
                 where_expr: Some(where_expr),
                 join: vec![],
                 group: None,

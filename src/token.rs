@@ -306,7 +306,7 @@ impl GetKind for Option<&Token> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Hash)]
+#[derive(Debug, Clone, PartialEq, Default, Hash, Copy)]
 pub struct Loc {
     pub line: usize,
     pub col: usize,

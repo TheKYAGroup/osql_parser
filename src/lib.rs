@@ -7,6 +7,7 @@ use crate::ast::Program;
 
 pub mod ast;
 pub mod lexer;
+pub mod oir;
 pub mod parser;
 pub mod token;
 
