@@ -23,8 +23,8 @@ pub enum InnerOir {
 
 #[derive(Debug)]
 pub struct FunctionCall {
-    name: EcoString,
-    args: Vec<Oir>,
+    pub name: EcoString,
+    pub args: Vec<Oir>,
 }
 
 #[derive(Debug)]
@@ -224,8 +224,8 @@ impl<'a> OirCompiler<'a> {
             ast::InfixOperator::Period => {
                 let out = Oir {
                     inner: InnerOir::BinaryOP(BinaryOp {
-                        left: left,
-                        right: right,
+                        left,
+                        right,
                         kind: BinaryOpKind::Access,
                     }),
                     span,

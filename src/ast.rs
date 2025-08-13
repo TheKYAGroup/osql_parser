@@ -32,10 +32,16 @@ macro_rules! hash_set {
     };
 }
 
-#[derive(Clone, Hash)]
+#[derive(Clone)]
 pub struct Program {
     pub store: ExpressionStore,
     pub statements: Vec<Statement>,
+}
+
+impl Hash for Program {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.statements.hash(state);
+    }
 }
 
 impl Debug for Program {

@@ -1,8 +1,5 @@
-use std::ptr::NonNull;
-
-use deluxe::{ExtractAttributes, HasAttributes};
 use proc_macro::TokenStream;
-use syn::{DeriveInput, Error, Meta, spanned::Spanned};
+use syn::{DeriveInput, Error, spanned::Spanned};
 
 #[proc_macro_derive(Ident, attributes(display, ident))]
 pub fn make_ident(item: TokenStream) -> TokenStream {
