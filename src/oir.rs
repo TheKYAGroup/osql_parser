@@ -108,7 +108,7 @@ impl<'a> OirCompiler<'a> {
 
     fn extend<'b>(&self, column_store: &'a Vec<ObjectColumns>) -> Self {
         Self {
-            store: &self.store,
+            store: self.store,
             column_store: Some(column_store),
         }
     }
@@ -208,12 +208,12 @@ impl<'a> OirCompiler<'a> {
     }
 
     fn compile_ident(&self, ident: &IdentExpression, span: Span) -> Oir {
-        let out = Oir {
+        
+
+        Oir {
             span,
             inner: InnerOir::Ident(ident.ident.clone()),
-        };
-
-        out
+        }
     }
 
     fn compile_infix(&self, infix: &InfixExpression, span: Span) -> CompilerResult {
@@ -236,7 +236,7 @@ impl<'a> OirCompiler<'a> {
                     .column_store
                     .ok_or(Error::new(ErrorType::UnkownColumn, out.span.clone()))?
                 {
-                    println!("Checking in: {:?}", column);
+                    println!("Checking in: {column:?}");
                     if column.is_one(&out) {
                         println!("Found: {out:?} in column: {column:?}");
                         found = true;
@@ -282,7 +282,7 @@ impl<'a> OirCompiler<'a> {
     fn compile_select(&self, select: &SelectExpression, span: Span) -> CompilerResult {
         let from = self.compile_named(&select.from)?;
 
-        println!("Getting cols from: {:?}", from);
+        println!("Getting cols from: {from:?}");
         let mut check_columns = vec![from.get_object_columns().unwrap()];
 
         for join in &select.join {
@@ -294,7 +294,7 @@ impl<'a> OirCompiler<'a> {
 
         for join in &select.join {
             if let Some(on) = &join.on {
-                new_comp.compile_expr_idx(&on)?;
+                new_comp.compile_expr_idx(on)?;
             }
         }
 
@@ -326,9 +326,9 @@ impl<'a> OirCompiler<'a> {
                                 ));
                             }
 
-                            let name = expr.get_end_name().unwrap();
+                            
 
-                            name
+                            expr.get_end_name().unwrap()
                         }
                     };
 
@@ -376,7 +376,7 @@ struct ObjectColumns {
 
 impl ObjectColumns {
     fn is_one(&self, oir: &Oir) -> bool {
-        println!("Checking: {:?}", oir);
+        println!("Checking: {oir:?}");
         match &oir.inner {
             InnerOir::BaseTable(_eco_string) => todo!(),
             InnerOir::Select(_select) => todo!(),

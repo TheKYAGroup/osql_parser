@@ -310,7 +310,7 @@ impl Parser {
             "Called parse_select when the cur_token is not select",
         );
 
-        let start = self.cur_token.as_ref().unwrap().start.clone();
+        let start = self.cur_token.as_ref().unwrap().start;
 
         self.next_token();
 
@@ -390,7 +390,7 @@ impl Parser {
             None
         };
 
-        let end = self.cur_token.as_ref().unwrap().end.clone();
+        let end = self.cur_token.as_ref().unwrap().end;
 
         Ok(self.expr_store.add(Expression {
             inner: ExpressionInner::Select(SelectExpression {
@@ -421,12 +421,9 @@ impl Parser {
             _ => panic!("Unsupported join type: {:?}", self.cur_token),
         };
 
-        match join_type {
-            JoinType::Outer(
+        if let JoinType::Outer(
                 crate::ast::OuterJoinDirection::Left | crate::ast::OuterJoinDirection::Full,
-            ) => self.next_token(),
-            _ => {}
-        };
+            ) = join_type { self.next_token() };
 
         self.expect_peek(TokenKind::Join)?;
 
@@ -483,8 +480,8 @@ impl Parser {
                 inner: ExpressionInner::Ident(IdentExpression {
                     ident: "date".into(),
                 }),
-                start: start.clone(),
-                end: end.clone(),
+                start: *start,
+                end: *end,
             }),
             _ => self.parse_ident()?,
         };
@@ -507,16 +504,13 @@ impl Parser {
         let start = self.get_start().unwrap();
         let expr = self.parse_expression(Precedence::Lowest)?;
 
-        match self.expr_store.get_ref(&expr).unwrap() {
-            Expression {
+        if let Expression {
                 inner: ExpressionInner::Named(named),
                 ..
-            } => {
-                let out = named.clone();
-                _ = self.expr_store.remove(expr);
-                return Ok(out);
-            }
-            _ => {}
+            } = self.expr_store.get_ref(&expr).unwrap() {
+            let out = named.clone();
+            _ = self.expr_store.remove(expr);
+            return Ok(out);
         };
         let name = if self.peek_token_in(&[TokenKind::ident(""), TokenKind::string("")]) {
             self.next_token();
@@ -664,7 +658,7 @@ impl Parser {
     }
 
     fn get_expr_start(&self, expr: &ExpressionIdx) -> Loc {
-        self.expr_store.get_ref(expr).unwrap().start.clone()
+        self.expr_store.get_ref(expr).unwrap().start
     }
 
     fn parse_call(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
@@ -718,11 +712,11 @@ impl Parser {
     }
 
     fn get_start(&self) -> Option<Loc> {
-        self.cur_token.as_ref().map(|tok| tok.start.clone())
+        self.cur_token.as_ref().map(|tok| tok.start)
     }
 
     fn get_end(&self) -> Option<Loc> {
-        self.cur_token.as_ref().map(|tok| tok.end.clone())
+        self.cur_token.as_ref().map(|tok| tok.end)
     }
 
     fn parse_grouped(&mut self) -> Result<ExpressionIdx> {

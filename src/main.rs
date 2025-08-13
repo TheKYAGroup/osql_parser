@@ -27,9 +27,9 @@ fn main() {
             inner: ParserError::PeekFailed { expected, got },
             backtrace,
         }) => {
-            eprintln!("Backtrace: {}", backtrace);
-            eprintln!("Failed to parse expected: {}", expected);
-            eprintln!("Got: {:?}", got);
+            eprintln!("Backtrace: {backtrace}");
+            eprintln!("Failed to parse expected: {expected}");
+            eprintln!("Got: {got:?}");
             match got {
                 None => {}
                 Some(tok) => {
@@ -44,7 +44,7 @@ fn main() {
             inner: ParserError::NoPrefixParseFn(tok),
             backtrace,
         }) => {
-            eprintln!("Backtrace: {}", backtrace);
+            eprintln!("Backtrace: {backtrace}");
             eprintln!("No prefix parse function for: {}", tok.kind);
             eprint!("{}", &input[0..tok.start.idx]);
             eprint!("{{|{}|}}", &input[tok.start.idx..tok.end.idx]);
@@ -53,9 +53,9 @@ fn main() {
         }
         Err(err) => {
             println!("Backtrace: {}", err.backtrace);
-            panic!("Unhandeled error: {}", err)
+            panic!("Unhandeled error: {err}")
         }
     };
 
-    println!("{}", out)
+    println!("{out}")
 }

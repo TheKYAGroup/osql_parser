@@ -65,7 +65,7 @@ impl Display for Program {
                         idx: expression_idx,
                         store: &self.store,
                     };
-                    writeln!(f, "{};", pexp)?;
+                    writeln!(f, "{pexp};")?;
                 }
             }
         }
@@ -98,8 +98,8 @@ pub struct Expression {
 impl Expression {
     pub fn span(&self) -> Span {
         Span {
-            start: self.start.into(),
-            end: self.end.into(),
+            start: self.start,
+            end: self.end,
         }
     }
 }
@@ -142,24 +142,21 @@ impl ExpressionIdx {
                 let union_cols: HashSet<EcoString> = sel
                     .union
                     .iter()
-                    .map(|union| union.expr.get_outer_cols(store, false))
-                    .flatten()
+                    .flat_map(|union| union.expr.get_outer_cols(store, false))
                     .collect();
 
                 let mut main: HashSet<EcoString> = match &sel.columns {
                     Columns::All => sel
                         .join
                         .iter()
-                        .map(|join| join.expr.get_outer_cols(store, false))
-                        .flatten()
+                        .flat_map(|join| join.expr.get_outer_cols(store, false))
                         .collect(),
                     Columns::Individual(nameds) => nameds
                         .iter()
-                        .map(|named| match &named.name {
+                        .flat_map(|named| match &named.name {
                             Some(name) => hash_set![name.ident.clone()],
                             None => named.expr.get_outer_cols(store, false),
                         })
-                        .flatten()
                         .collect(),
                 };
 
@@ -363,7 +360,7 @@ impl FmtWithStore for GroupedExpression {
         write!(f, ")")?;
 
         if let Some(name) = &self.name {
-            write!(f, " {}", name)?;
+            write!(f, " {name}")?;
         }
 
         Ok(())
@@ -661,7 +658,7 @@ impl FmtWithStore for Named {
         write_store!(f, store, self.expr)?;
 
         if let Some(name) = &self.name {
-            write!(f, " {}", name)?;
+            write!(f, " {name}")?;
         }
 
         Ok(())
@@ -781,7 +778,7 @@ impl FmtWithStore for FunctionCall {
             .collect::<Vec<String>>()
             .join(", ");
         self.func.fmt_with_store(f, store)?;
-        write!(f, "({})", args)?;
+        write!(f, "({args})")?;
 
         Ok(())
     }
@@ -877,7 +874,7 @@ impl FmtWithStore for Array {
             .collect::<Vec<_>>()
             .join(", ");
 
-        write!(f, "({})", thing)
+        write!(f, "({thing})")
     }
 }
 
