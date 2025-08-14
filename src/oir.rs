@@ -106,7 +106,7 @@ impl<'a> OirCompiler<'a> {
         }
     }
 
-    fn extend<'b>(&self, column_store: &'a Vec<ObjectColumns>) -> Self {
+    fn extend(&self, column_store: &'a Vec<ObjectColumns>) -> Self {
         Self {
             store: self.store,
             column_store: Some(column_store),
@@ -208,8 +208,6 @@ impl<'a> OirCompiler<'a> {
     }
 
     fn compile_ident(&self, ident: &IdentExpression, span: Span) -> Oir {
-        
-
         Oir {
             span,
             inner: InnerOir::Ident(ident.ident.clone()),
@@ -325,8 +323,6 @@ impl<'a> OirCompiler<'a> {
                                     named.span.clone(),
                                 ));
                             }
-
-                            
 
                             expr.get_end_name().unwrap()
                         }
@@ -490,13 +486,13 @@ mod tests {
         let oir = out[0].as_ref().unwrap();
 
         let InnerOir::Select(select) = &oir.inner else {
-            panic!("Not select: {:?}", oir);
+            panic!("Not select: {oir:?}");
         };
 
         select.columns.get("A").unwrap();
         select.columns.get("B").unwrap();
         select.columns.get("D").unwrap();
-        assert!(select.columns.get("c").is_none());
+        assert!(!select.columns.contains_key("c"));
     }
 
     #[test]
@@ -509,13 +505,13 @@ mod tests {
         let oir = out[0].as_ref().unwrap();
 
         let InnerOir::Select(select) = &oir.inner else {
-            panic!("Not select: {:?}", oir);
+            panic!("Not select: {oir:?}");
         };
 
         select.columns.get("A").unwrap();
         select.columns.get("B").unwrap();
         select.columns.get("D").unwrap();
-        assert!(select.columns.get("c").is_none());
+        assert!(!select.columns.contains_key("c"));
     }
 
     #[test]
@@ -561,13 +557,13 @@ mod tests {
         let oir = out[0].as_ref().unwrap();
 
         let InnerOir::Select(select) = &oir.inner else {
-            panic!("Not select: {:?}", oir);
+            panic!("Not select: {oir:?}");
         };
 
         select.columns.get("A").unwrap();
         select.columns.get("B").unwrap();
         select.columns.get("D").unwrap();
-        assert!(select.columns.get("c").is_none());
+        assert!(!select.columns.contains_key("c"));
     }
 
     #[test]
@@ -613,13 +609,13 @@ mod tests {
         let oir = out[0].as_ref().unwrap();
 
         let InnerOir::Select(select) = &oir.inner else {
-            panic!("Not select: {:?}", oir);
+            panic!("Not select: {oir:?}");
         };
 
         select.columns.get("E").unwrap();
         select.columns.get("B").unwrap();
         select.columns.get("D").unwrap();
-        assert!(select.columns.get("C").is_none());
+        assert!(!select.columns.contains_key("C"));
     }
 
     #[test]
@@ -636,14 +632,14 @@ mod tests {
         let oir = out[0].as_ref().unwrap();
 
         let InnerOir::Select(select) = &oir.inner else {
-            panic!("Not select: {:?}", oir);
+            panic!("Not select: {oir:?}");
         };
 
         select.columns.get("A").unwrap();
         select.columns.get("B").unwrap();
         select.columns.get("D").unwrap();
         select.columns.get("Col2").unwrap();
-        assert!(select.columns.get("c").is_none());
+        assert!(!select.columns.contains_key("c"));
     }
 
     #[test]
@@ -695,13 +691,13 @@ mod tests {
         let oir = out[0].as_ref().unwrap();
 
         let InnerOir::Select(select) = &oir.inner else {
-            panic!("Not select: {:?}", oir);
+            panic!("Not select: {oir:?}");
         };
 
         select.columns.get("A").unwrap();
         select.columns.get("B").unwrap();
         select.columns.get("D").unwrap();
-        assert!(select.columns.get("c").is_none());
+        assert!(!select.columns.contains_key("c"));
     }
 
     #[test]

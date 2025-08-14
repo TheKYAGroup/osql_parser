@@ -412,7 +412,7 @@ mod test {
 
         for tt in tests {
             let tok = lexer.next_token().unwrap();
-            println!("Tok: {:?}", tok);
+            println!("Tok: {tok:?}");
             assert_eq!(tt, tok.kind)
         }
     }
@@ -450,7 +450,7 @@ mod test {
 
         for tt in tests {
             let tok = lexer.next_token();
-            println!("Tok: {:?}", tok);
+            println!("Tok: {tok:?}");
             assert_eq!(Some(tt), tok.map(|tok| { tok.kind }))
         }
     }

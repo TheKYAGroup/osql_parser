@@ -422,8 +422,11 @@ impl Parser {
         };
 
         if let JoinType::Outer(
-                crate::ast::OuterJoinDirection::Left | crate::ast::OuterJoinDirection::Full,
-            ) = join_type { self.next_token() };
+            crate::ast::OuterJoinDirection::Left | crate::ast::OuterJoinDirection::Full,
+        ) = join_type
+        {
+            self.next_token()
+        };
 
         self.expect_peek(TokenKind::Join)?;
 
@@ -505,9 +508,10 @@ impl Parser {
         let expr = self.parse_expression(Precedence::Lowest)?;
 
         if let Expression {
-                inner: ExpressionInner::Named(named),
-                ..
-            } = self.expr_store.get_ref(&expr).unwrap() {
+            inner: ExpressionInner::Named(named),
+            ..
+        } = self.expr_store.get_ref(&expr).unwrap()
+        {
             let out = named.clone();
             _ = self.expr_store.remove(expr);
             return Ok(out);
@@ -915,10 +919,7 @@ impl Parser {
     }
 
     fn parse_not_infix(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
-        let not = match self.cur_token.get_kind() {
-            Some(TokenKind::Not) => true,
-            _ => false,
-        };
+        let not = matches!(self.cur_token.get_kind(), Some(TokenKind::Not));
 
         let start = self.get_expr_start(&left);
 
@@ -1333,7 +1334,7 @@ mod tests {
         test_expression(store, &expected.right, &got.right);
     }
 
-    fn test_join(store: &ExpressionStore, expected: &Vec<Join>, got: &Vec<Join>) {
+    fn test_join(store: &ExpressionStore, expected: &[Join], got: &[Join]) {
         assert_eq!(expected.len(), got.len());
         for (expected, got) in std::iter::zip(expected.iter(), got.iter()) {
             assert_eq!(expected.join_type, got.join_type);
@@ -1376,8 +1377,8 @@ mod tests {
             Err(err) => match err.inner {
                 ParserError::PeekFailed { expected, got } => {
                     eprintln!("Backtrace: {}", err.backtrace);
-                    eprintln!("Failed to parse expected: {}", expected);
-                    eprintln!("Got: {:?}", got);
+                    eprintln!("Failed to parse expected: {expected}");
+                    eprintln!("Got: {got:?}");
                     match got {
                         None => {}
                         Some(tok) => {
@@ -1468,7 +1469,7 @@ mod tests {
             }
         };
 
-        println!("Program: {}", program);
+        println!("Program: {program}");
 
         let store = &program.store;
 
