@@ -10,8 +10,8 @@ use crate::{
         UnionType, When,
     },
     lexer::Lexer,
-    oir::Span,
-    token::{GetKind, Loc, Token, TokenKind},
+    token::{GetKind, Token, TokenKind},
+    Loc, Span,
 };
 
 ///
@@ -117,11 +117,32 @@ pub enum ParserError {
 #[derive(Debug, Error)]
 #[error("{}", .inner)]
 pub struct ParserErrorWithBacktrace {
-    #[from]
     #[source]
     pub inner: ParserError,
     #[backtrace]
     pub backtrace: Box<Backtrace>,
+
+    pub span: Span,
+}
+
+impl Clone for ParserErrorWithBacktrace {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            backtrace: Backtrace::capture().into(),
+            span: self.span.clone(),
+        }
+    }
+}
+
+impl ParserErrorWithBacktrace {
+    fn new(kind: ParserError, span: Span) -> Self {
+        Self {
+            inner: kind,
+            backtrace: Backtrace::capture().into(),
+            span,
+        }
+    }
 }
 
 #[derive(derive_more::Debug)]
@@ -130,6 +151,7 @@ pub struct Parser {
     lex: Lexer,
     cur_token: Option<Token>,
     peek_token: Option<Token>,
+    last_span: Span,
 
     #[debug(skip)]
     prefix_parse_fns: HashMap<TokenKind, PrefixParseFn>,
@@ -160,6 +182,8 @@ impl Parser {
             lex,
             cur_token: None,
             peek_token: None,
+
+            last_span: Default::default(),
 
             prefix_parse_fns: HashMap::new(),
             infix_parse_fns: HashMap::new(),
@@ -212,6 +236,9 @@ impl Parser {
     }
 
     fn next_token(&mut self) {
+        if let Some(cur_token) = &self.cur_token {
+            self.last_span = cur_token.get_span();
+        }
         self.cur_token = self.peek_token.clone();
         self.peek_token = self.lex.next_token();
         while let Some(Token {
@@ -259,8 +286,9 @@ impl Parser {
             .prefix_parse_fns
             .get(&self.cur_token.clone().unwrap().kind)
         else {
-            return Err(ParserError::NoPrefixParseFn(
-                self.cur_token.clone().unwrap(),
+            return Err(ParserErrorWithBacktrace::new(
+                ParserError::NoPrefixParseFn(self.cur_token.clone().unwrap()),
+                self.cur_token.as_ref().unwrap().get_span(),
             ))?;
         };
 
@@ -323,7 +351,15 @@ impl Parser {
         };
 
         let columns = match self.cur_token.get_kind() {
-            None => return Err(ParserError::PartialSelectExpr)?,
+            None => {
+                return Err(ParserErrorWithBacktrace::new(
+                    ParserError::PartialSelectExpr,
+                    Span {
+                        start: start,
+                        end: start,
+                    },
+                ))?
+            }
             Some(TokenKind::Asterisk) => Columns::All,
             _ => {
                 let mut columns = vec![self.parse_column()?];
@@ -455,7 +491,15 @@ impl Parser {
         let union_type = match self.peek_token.get_kind() {
             Some(TokenKind::All) => UnionType::All,
             Some(_) => UnionType::None,
-            _ => return Err(ParserError::UnexpectedEOF.into()),
+            _ => {
+                return Err(ParserErrorWithBacktrace::new(
+                    ParserError::UnexpectedEOF,
+                    self.peek_token
+                        .as_ref()
+                        .map(Token::get_span)
+                        .unwrap_or(self.cur_token.as_ref().unwrap().get_span()),
+                ))
+            }
         };
         self.next_token();
         if union_type != UnionType::None {
@@ -540,7 +584,10 @@ impl Parser {
         let ident = match &self.cur_token.get_kind() {
             Some(TokenKind::String(str)) => ecow::eco_format!("\"{}\"", str),
             Some(TokenKind::Ident(str)) => str.clone(),
-            None => Err(ParserError::UnexpectedEOF)?,
+            None => Err(ParserErrorWithBacktrace::new(
+                ParserError::UnexpectedEOF,
+                Span::default(),
+            ))?,
             _ => {
                 panic!(
                     "Called parse_ident with unsupported token type: {:?}",
@@ -591,8 +638,15 @@ impl Parser {
 
     fn parse_int(&mut self) -> Result<ExpressionIdx> {
         let int = match &self.cur_token.get_kind() {
-            Some(TokenKind::Integer(str)) => str.parse().map_err(ParserError::from)?,
-            None => Err(ParserError::UnexpectedEOF)?,
+            Some(TokenKind::Integer(str)) => {
+                str.parse().map_err(ParserError::from).map_err(|err| {
+                    ParserErrorWithBacktrace::new(err, self.cur_token.as_ref().unwrap().get_span())
+                })?
+            }
+            None => Err(ParserErrorWithBacktrace::new(
+                ParserError::UnexpectedEOF,
+                self.last_span.clone(),
+            ))?,
             _ => panic!(
                 "Called parse_int with unsupported token type: {:?}",
                 self.cur_token
@@ -645,8 +699,9 @@ impl Parser {
             Some(TokenKind::Using) => InfixOperator::Using,
             Some(TokenKind::By) => InfixOperator::By,
             Some(TokenKind::JoinStrings) => InfixOperator::JoinStrings,
-            _ => Err(ParserError::UnsupportedInfix(
-                self.cur_token.as_ref().get_kind().unwrap().clone(),
+            _ => Err(ParserErrorWithBacktrace::new(
+                ParserError::UnsupportedInfix(self.cur_token.as_ref().get_kind().unwrap().clone()),
+                self.cur_token.as_ref().unwrap().get_span(),
             ))?,
         };
 
@@ -781,6 +836,13 @@ impl Parser {
         Ok(self.new_expr_idx(Expression { inner, start, end }))
     }
 
+    fn unexpeccted_eof(&self) -> core::result::Result<!, ParserErrorWithBacktrace> {
+        Err(ParserErrorWithBacktrace::new(
+            ParserError::UnexpectedEOF,
+            self.last_span.clone(),
+        ))
+    }
+
     fn parse_prefix(&mut self) -> Result<ExpressionIdx> {
         let start = self.get_start().unwrap();
         let op = match self.cur_token.get_kind() {
@@ -795,9 +857,11 @@ impl Parser {
                 }));
             }
             Some(TokenKind::Date) => PrefixOperator::Date,
-            _ => Err(ParserError::UnsupportedPrefix(
-                self.cur_token.as_ref().get_kind().unwrap().clone(),
+            Some(_) => Err(ParserErrorWithBacktrace::new(
+                ParserError::UnsupportedPrefix(self.cur_token.as_ref().get_kind().unwrap().clone()),
+                self.cur_token.as_ref().unwrap().get_span(),
             ))?,
+            None => self.unexpeccted_eof()?,
         };
 
         self.next_token();
@@ -860,15 +924,31 @@ impl Parser {
         Ok(When { condition, result })
     }
 
+    fn peek_span_or_last(&self) -> Span {
+        if let Some(tok) = &self.peek_token {
+            tok.get_span()
+        } else if let Some(tok) = &self.cur_token {
+            Span {
+                start: tok.end,
+                end: tok.end,
+            }
+        } else {
+            self.last_span.clone()
+        }
+    }
+
     fn expect_peek(&mut self, token: TokenKind) -> Result<()> {
         if self.peek_token_is(token.clone()) {
             self.next_token();
             Ok(())
         } else {
-            Err(ParserError::PeekFailed {
-                expected: token,
-                got: self.peek_token.clone(),
-            })?
+            Err(ParserErrorWithBacktrace::new(
+                ParserError::PeekFailed {
+                    expected: token,
+                    got: self.peek_token.clone(),
+                },
+                self.peek_span_or_last(),
+            ))?
         }
     }
 
@@ -877,10 +957,13 @@ impl Parser {
             self.next_token();
             Ok(())
         } else {
-            Err(ParserError::MultiPeekFailed {
-                expected: token.to_vec(),
-                got: self.peek_token.clone(),
-            })?
+            Err(ParserErrorWithBacktrace::new(
+                ParserError::MultiPeekFailed {
+                    expected: token.to_vec(),
+                    got: self.peek_token.clone(),
+                },
+                self.peek_span_or_last(),
+            ))?
         }
     }
 
@@ -931,8 +1014,9 @@ impl Parser {
             None => panic!("Called parse_not_infix with cur_token = None"),
             Some(TokenKind::Like) => NotInfixOperator::Like,
             Some(TokenKind::In) => NotInfixOperator::In,
-            _ => Err(ParserError::UnsupportedInfix(
-                self.cur_token.as_ref().get_kind().unwrap().clone(),
+            _ => Err(ParserErrorWithBacktrace::new(
+                ParserError::UnsupportedInfix(self.cur_token.as_ref().get_kind().unwrap().clone()),
+                self.cur_token.as_ref().unwrap().get_span(),
             ))?,
         };
 

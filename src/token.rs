@@ -4,6 +4,8 @@ use derive_more::Display;
 use ecow::EcoString;
 use osql_parser_derive::Ident;
 
+use crate::{Loc, Span};
+
 #[derive(Debug, Clone, Eq, Display, Ident)]
 pub enum TokenKind {
     /// (
@@ -284,6 +286,15 @@ pub struct Token {
     pub end: Loc,
 }
 
+impl Token {
+    pub fn get_span(&self) -> Span {
+        Span {
+            start: self.start,
+            end: self.end,
+        }
+    }
+}
+
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.kind.fmt(f)
@@ -303,20 +314,6 @@ impl GetKind for Option<Token> {
 impl GetKind for Option<&Token> {
     fn get_kind(&self) -> Option<&TokenKind> {
         self.as_ref().map(|tok| &tok.kind)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Hash, Copy)]
-pub struct Loc {
-    pub line: usize,
-    pub col: usize,
-    pub idx: usize,
-}
-
-impl<T> Index<Loc> for [T] {
-    type Output = T;
-    fn index(&self, idx: Loc) -> &Self::Output {
-        &self[idx.idx]
     }
 }
 

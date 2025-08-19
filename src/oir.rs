@@ -1,5 +1,6 @@
 use std::{backtrace::Backtrace, collections::HashMap};
 
+use derive_more::Display;
 use ecow::EcoString;
 use thiserror::Error;
 
@@ -8,7 +9,7 @@ use crate::{
         self, Expression, ExpressionIdx, ExpressionStore, GroupedExpression, IdentExpression,
         InfixExpression, Program, SelectExpression, Statement,
     },
-    token::Loc,
+    Span,
 };
 
 #[derive(Debug)]
@@ -28,10 +29,41 @@ pub struct FunctionCall {
     pub args: Vec<Oir>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Display)]
 pub enum BinaryOpKind {
+    #[display("=")]
     Equality,
+    #[display(".")]
     Access,
+    #[display("-")]
+    Sub,
+    #[display("/")]
+    Div,
+    #[display("*")]
+    Mul,
+    #[display("+")]
+    Add,
+    #[display("<")]
+    LT,
+    #[display(">")]
+    GT,
+    #[display("<=")]
+    LTEq,
+    #[display(">=")]
+    GTEq,
+    #[display("AND")]
+    And,
+    #[display("OR")]
+    Or,
+}
+
+#[derive(Debug, PartialEq, Display)]
+pub enum ResolvedType {
+    Unknown,
+    Int,
+    String,
+    Table,
+    Boolean,
 }
 
 #[derive(Debug)]
@@ -58,12 +90,6 @@ pub struct Oir {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Span {
-    pub start: Loc,
-    pub end: Loc,
-}
-
 pub struct OirCompiler<'a> {
     store: &'a ExpressionStore,
     column_store: Option<&'a Vec<ObjectColumns>>,
@@ -74,7 +100,17 @@ pub enum ErrorType {
     #[error("Unkown Column")]
     UnkownColumn,
     #[error("Function is not an ident")]
-    FucntionNotIdent,
+    FunctionNotIdent,
+    #[error("Infix operator not implemented: {_0}")]
+    InfixNotImplemented(ast::InfixOperator),
+    #[error("Expression not implemented: {_0:?}")]
+    ExpressionNotImplemented(ast::ExpressionInner),
+    #[error("Cannot do {left} {infix} {right}")]
+    IncorrectInfixTypes {
+        left: ResolvedType,
+        right: ResolvedType,
+        infix: BinaryOpKind,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -155,18 +191,13 @@ impl<'a> OirCompiler<'a> {
             crate::ast::ExpressionInner::Int(int_expression) => {
                 self.compile_int_expression(int_expression, expr.span())
             }
-            crate::ast::ExpressionInner::Case(_case_expression) => todo!(),
-            crate::ast::ExpressionInner::Prefix(_prefix_expression) => todo!(),
             crate::ast::ExpressionInner::FunctionCall(function_call) => {
                 self.compile_function_call(function_call, expr.span())
             }
-            crate::ast::ExpressionInner::All(_all) => todo!(),
-            crate::ast::ExpressionInner::Array(_array) => todo!(),
-            crate::ast::ExpressionInner::Named(_named) => todo!(),
-            crate::ast::ExpressionInner::NullOr(_null_or) => todo!(),
-            crate::ast::ExpressionInner::Null(_null) => todo!(),
-            crate::ast::ExpressionInner::Between(_between) => todo!(),
-            crate::ast::ExpressionInner::NotInfix(_not_infix_expression) => todo!(),
+            _ => Err(Error::new(
+                ErrorType::ExpressionNotImplemented(expr.inner.clone()),
+                expr.span(),
+            )),
         }
     }
 
@@ -184,7 +215,7 @@ impl<'a> OirCompiler<'a> {
     ) -> CompilerResult {
         let name = self.compile_expr_idx(&functioncall.func)?;
         let InnerOir::Ident(ident) = &name.inner else {
-            return Err(Error::new(ErrorType::FucntionNotIdent, name.span));
+            return Err(Error::new(ErrorType::FunctionNotIdent, name.span));
         };
 
         let mut args = Vec::new();
@@ -268,22 +299,120 @@ impl<'a> OirCompiler<'a> {
                 }),
                 span,
             }),
-            ast::InfixOperator::Sub => todo!(),
-            ast::InfixOperator::Div => todo!(),
-            ast::InfixOperator::Mul => todo!(),
-            ast::InfixOperator::Add => todo!(),
-            ast::InfixOperator::LT => todo!(),
-            ast::InfixOperator::GT => todo!(),
-            ast::InfixOperator::LTEq => todo!(),
-            ast::InfixOperator::GTEq => todo!(),
-            ast::InfixOperator::And => todo!(),
-            ast::InfixOperator::Or => todo!(),
-            ast::InfixOperator::Is => todo!(),
-            ast::InfixOperator::Using => todo!(),
-            ast::InfixOperator::UnEq => todo!(),
-            ast::InfixOperator::NotEq => todo!(),
-            ast::InfixOperator::By => todo!(),
-            ast::InfixOperator::JoinStrings => todo!(),
+            ast::InfixOperator::Sub => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::Sub,
+                }),
+                span,
+            }),
+            ast::InfixOperator::Div => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::Div,
+                }),
+                span,
+            }),
+            ast::InfixOperator::Mul => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::Mul,
+                }),
+                span,
+            }),
+            ast::InfixOperator::Add => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::Add,
+                }),
+                span,
+            }),
+            ast::InfixOperator::LT => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::LT,
+                }),
+                span,
+            }),
+            ast::InfixOperator::GT => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::GT,
+                }),
+                span,
+            }),
+            ast::InfixOperator::LTEq => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::LTEq,
+                }),
+                span,
+            }),
+            ast::InfixOperator::GTEq => Ok(Oir {
+                inner: InnerOir::BinaryOP(BinaryOp {
+                    left,
+                    right,
+                    kind: BinaryOpKind::GTEq,
+                }),
+                span,
+            }),
+            ast::InfixOperator::And => {
+                let op = BinaryOpKind::And;
+                if left.resolve_type() != ResolvedType::Boolean
+                    || right.resolve_type() != ResolvedType::Boolean
+                {
+                    return Err(Error::new(
+                        ErrorType::IncorrectInfixTypes {
+                            left: left.resolve_type(),
+                            right: right.resolve_type(),
+                            infix: op,
+                        },
+                        span,
+                    ));
+                }
+                Ok(Oir {
+                    inner: InnerOir::BinaryOP(BinaryOp {
+                        left,
+                        right,
+                        kind: op,
+                    }),
+                    span,
+                })
+            }
+            ast::InfixOperator::Or => {
+                let op = BinaryOpKind::Or;
+                if left.resolve_type() != ResolvedType::Boolean
+                    || right.resolve_type() != ResolvedType::Boolean
+                {
+                    return Err(Error::new(
+                        ErrorType::IncorrectInfixTypes {
+                            left: left.resolve_type(),
+                            right: right.resolve_type(),
+                            infix: op,
+                        },
+                        span,
+                    ));
+                }
+                Ok(Oir {
+                    inner: InnerOir::BinaryOP(BinaryOp {
+                        left,
+                        right,
+                        kind: op,
+                    }),
+                    span,
+                })
+            }
+            _ => Err(Error::new(
+                ErrorType::InfixNotImplemented(infix.op.clone()),
+                span,
+            )),
         }
     }
 
@@ -420,7 +549,7 @@ impl ObjectColumns {
 
                     self.check_cols(right)
                 }
-                BinaryOpKind::Equality => todo!(),
+                _ => self.is_one(&left) && self.is_one(&right),
             },
             InnerOir::FunctionCall(_) => todo!(),
             InnerOir::Integer(_) => todo!(),
@@ -475,12 +604,48 @@ impl Oir {
             InnerOir::Named(_) => None,
             InnerOir::Ident(eco_string) => Some(eco_string.clone()),
             InnerOir::BinaryOP(BinaryOp { right, kind, .. }) => match kind {
-                BinaryOpKind::Equality => None,
                 BinaryOpKind::Access => right.get_end_name(),
+                _ => None,
             },
             InnerOir::FunctionCall(_) => None,
             InnerOir::Integer(_) => None,
         }
+    }
+
+    fn resolve_type(&self) -> ResolvedType {
+        match &self.inner {
+            InnerOir::BaseTable(_) => ResolvedType::Table,
+            InnerOir::Select(_) => ResolvedType::Table,
+            InnerOir::Named(named) => named.inner.resolve_type(),
+            InnerOir::Ident(_) => ResolvedType::Unknown,
+            InnerOir::BinaryOP(binary_op) => binary_op.resolve_type(),
+            InnerOir::FunctionCall(function_call) => function_call.resolve_type(),
+            InnerOir::Integer(_) => ResolvedType::Int,
+        }
+    }
+}
+
+impl BinaryOp {
+    fn resolve_type(&self) -> ResolvedType {
+        match self.kind {
+            BinaryOpKind::Access => self.right.resolve_type(),
+            BinaryOpKind::Sub | BinaryOpKind::Div | BinaryOpKind::Mul | BinaryOpKind::Add => {
+                ResolvedType::Int
+            }
+            BinaryOpKind::LT
+            | BinaryOpKind::GT
+            | BinaryOpKind::LTEq
+            | BinaryOpKind::GTEq
+            | BinaryOpKind::And
+            | BinaryOpKind::Or
+            | BinaryOpKind::Equality => ResolvedType::Boolean,
+        }
+    }
+}
+
+impl FunctionCall {
+    fn resolve_type(&self) -> ResolvedType {
+        ResolvedType::Unknown
     }
 }
 

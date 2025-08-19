@@ -1,7 +1,10 @@
 use comemo::memoize;
 use ecow::EcoString;
 
-use crate::token::{ident_map, Loc, Token, TokenKind};
+use crate::{
+    token::{ident_map, Token, TokenKind},
+    Loc,
+};
 
 #[derive(Debug, Clone, Hash)]
 pub struct Lexer {

@@ -9,7 +9,7 @@ use derive_more::Display;
 use ecow::EcoString;
 use uuid::Uuid;
 
-use crate::{oir::Span, token::Loc};
+use crate::{Loc, Span};
 
 macro_rules! write_store {
     ($dst:expr, $store:expr, $value:expr) => {

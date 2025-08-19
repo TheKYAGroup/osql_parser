@@ -194,7 +194,7 @@ fn handle_message(method: EcoString, contents: &[u8], state: &mut State) {
 
             let uri = request.params.text_document.id.uri.clone();
 
-            let program = osql_parser::parse(
+            let program = osql_parser::parse_with_backtrace(
                 state
                     .documents
                     .get(&uri)
@@ -202,11 +202,10 @@ fn handle_message(method: EcoString, contents: &[u8], state: &mut State) {
                     .clone(),
             );
 
+            let mut info: Vec<Diagnostic> = Vec::new();
             match program {
                 Ok(prog) => {
                     let oir = OirCompiler::compile_program(&prog);
-
-                    let mut info: Vec<Diagnostic> = Vec::new();
 
                     for oir in oir {
                         match oir {
@@ -221,26 +220,31 @@ fn handle_message(method: EcoString, contents: &[u8], state: &mut State) {
                             Ok(_) => {}
                         }
                     }
-
-                    let resp = new_diagnostics_notification(uri, info);
-
-                    let reply = encode_message(&resp);
-
-                    let mut writer = stdout();
-                    if let Err(err) = write!(&mut writer, "{reply}") {
-                        error!("Failed to write to stdout: {err:?}");
-                    };
-
-                    if let Err(err) = writer.flush() {
-                        error!("Failed to flush stdio: {err:?}");
-                    };
-
-                    info!("Sent the reply")
                 }
                 Err(err) => {
-                    error!("Compiler error: {err:?}");
+                    info.push(Diagnostic {
+                        range: err.span.into(),
+                        source: Some(uri.clone()),
+                        message: err.inner.to_string().into(),
+                        related_information: Default::default(),
+                    });
                 }
             }
+
+            let resp = new_diagnostics_notification(uri, info);
+
+            let reply = encode_message(&resp);
+
+            let mut writer = stdout();
+            if let Err(err) = write!(&mut writer, "{reply}") {
+                error!("Failed to write to stdout: {err:?}");
+            };
+
+            if let Err(err) = writer.flush() {
+                error!("Failed to flush stdio: {err:?}");
+            };
+
+            info!("Sent the reply")
         }
         "shutdown" => {
             state.should_exit = true;

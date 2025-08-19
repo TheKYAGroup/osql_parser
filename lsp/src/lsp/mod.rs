@@ -33,8 +33,8 @@ pub struct Range {
     pub end: Position,
 }
 
-impl From<osql_parser::oir::Span> for Range {
-    fn from(value: osql_parser::oir::Span) -> Self {
+impl From<osql_parser::Span> for Range {
+    fn from(value: osql_parser::Span) -> Self {
         Self {
             start: value.start.into(),
             end: value.end.into(),
@@ -48,8 +48,8 @@ pub struct Position {
     pub character: usize,
 }
 
-impl From<osql_parser::token::Loc> for Position {
-    fn from(value: osql_parser::token::Loc) -> Self {
+impl From<osql_parser::Loc> for Position {
+    fn from(value: osql_parser::Loc) -> Self {
         Self {
             line: value.line,
             character: value.col,
