@@ -19,6 +19,7 @@ pub enum InnerOir {
     Ident(EcoString),
     BinaryOP(BinaryOp),
     FunctionCall(FunctionCall),
+    Integer(i64),
 }
 
 #[derive(Debug)]
@@ -151,7 +152,9 @@ impl<'a> OirCompiler<'a> {
             crate::ast::ExpressionInner::Ident(ident_expression) => {
                 Ok(self.compile_ident(ident_expression, expr.span()))
             }
-            crate::ast::ExpressionInner::Int(_int_expression) => todo!(),
+            crate::ast::ExpressionInner::Int(int_expression) => {
+                self.compile_int_expression(int_expression, expr.span())
+            }
             crate::ast::ExpressionInner::Case(_case_expression) => todo!(),
             crate::ast::ExpressionInner::Prefix(_prefix_expression) => todo!(),
             crate::ast::ExpressionInner::FunctionCall(function_call) => {
@@ -165,6 +168,13 @@ impl<'a> OirCompiler<'a> {
             crate::ast::ExpressionInner::Between(_between) => todo!(),
             crate::ast::ExpressionInner::NotInfix(_not_infix_expression) => todo!(),
         }
+    }
+
+    fn compile_int_expression(&self, int: &ast::IntExpression, span: Span) -> CompilerResult {
+        return Ok(Oir {
+            span,
+            inner: InnerOir::Integer(int.int),
+        });
     }
 
     fn compile_function_call(
@@ -413,6 +423,7 @@ impl ObjectColumns {
                 BinaryOpKind::Equality => todo!(),
             },
             InnerOir::FunctionCall(_) => todo!(),
+            InnerOir::Integer(_) => todo!(),
         }
     }
 
@@ -468,6 +479,7 @@ impl Oir {
                 BinaryOpKind::Access => right.get_end_name(),
             },
             InnerOir::FunctionCall(_) => None,
+            InnerOir::Integer(_) => None,
         }
     }
 }
