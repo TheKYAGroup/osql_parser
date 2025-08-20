@@ -498,15 +498,15 @@ impl<'a> OirCompiler<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-enum ColumnTypes {
+pub enum ColumnTypes {
     Base,
     Normal(Vec<EcoString>),
 }
 
 #[derive(Debug)]
-struct ObjectColumns {
-    name: Option<EcoString>,
-    columns: ColumnTypes,
+pub struct ObjectColumns {
+    pub name: Option<EcoString>,
+    pub columns: ColumnTypes,
 }
 
 impl ObjectColumns {
@@ -572,7 +572,7 @@ impl ObjectColumns {
 }
 
 impl Oir {
-    fn get_object_columns(&self) -> Option<ObjectColumns> {
+    pub fn get_object_columns(&self) -> Option<ObjectColumns> {
         match &self.inner {
             InnerOir::BaseTable(_) => Some(ObjectColumns {
                 name: None,
