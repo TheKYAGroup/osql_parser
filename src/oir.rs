@@ -647,6 +647,8 @@ impl FunctionCall {
 
 #[cfg(test)]
 mod tests {
+    use crate::Loc;
+
     use super::*;
 
     #[test]

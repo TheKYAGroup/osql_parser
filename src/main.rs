@@ -26,6 +26,7 @@ fn main() {
         Err(ParserErrorWithBacktrace {
             inner: ParserError::PeekFailed { expected, got },
             backtrace,
+            ..
         }) => {
             eprintln!("Backtrace: {backtrace}");
             eprintln!("Failed to parse expected: {expected}");
@@ -43,6 +44,7 @@ fn main() {
         Err(ParserErrorWithBacktrace {
             inner: ParserError::NoPrefixParseFn(tok),
             backtrace,
+            ..
         }) => {
             eprintln!("Backtrace: {backtrace}");
             eprintln!("No prefix parse function for: {}", tok.kind);

@@ -306,9 +306,9 @@ impl Lexer {
 
 #[cfg(test)]
 mod test {
-    use crate::token::{Loc, Token, TokenKind};
+    use crate::token::{Token, TokenKind};
 
-    use super::Lexer;
+    use super::*;
 
     #[test]
     fn simple_select() {
