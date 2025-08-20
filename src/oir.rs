@@ -275,9 +275,7 @@ impl<'a> OirCompiler<'a> {
                     .column_store
                     .ok_or(Error::new(ErrorType::UnkownColumn, out.span.clone()))?
                 {
-                    println!("Checking in: {column:?}");
                     if column.is_one(&out) {
-                        println!("Found: {out:?} in column: {column:?}");
                         found = true;
                     }
                     if found {
@@ -419,7 +417,6 @@ impl<'a> OirCompiler<'a> {
     fn compile_select(&self, select: &SelectExpression, span: Span) -> CompilerResult {
         let from = self.compile_named(&select.from)?;
 
-        println!("Getting cols from: {from:?}");
         let mut check_columns = vec![from.get_object_columns().unwrap()];
 
         for join in &select.join {
@@ -511,7 +508,6 @@ pub struct ObjectColumns {
 
 impl ObjectColumns {
     fn is_one(&self, oir: &Oir) -> bool {
-        println!("Checking: {oir:?}");
         match &oir.inner {
             InnerOir::BaseTable(_eco_string) => todo!(),
             InnerOir::Select(_select) => todo!(),
