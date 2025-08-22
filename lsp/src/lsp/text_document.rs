@@ -1,7 +1,7 @@
 use ecow::EcoString;
 use serde::{Deserialize, Serialize};
 
-use crate::lsp::Notification;
+use crate::lsp::{Location, Notification, Position, Request, Response};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TextDocumentItem {
@@ -58,4 +58,28 @@ pub struct DidChangeParams {
 
     #[serde(rename = "contentChanges")]
     pub content_changes: Vec<ContentChangeEvent>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PositionRequest {
+    #[serde(flatten)]
+    pub request: Request,
+
+    pub params: PositionParams,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PositionParams {
+    #[serde(rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier,
+
+    pub position: Position,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PositionResponse {
+    #[serde(flatten)]
+    pub response: Response,
+
+    pub result: Option<Location>,
 }

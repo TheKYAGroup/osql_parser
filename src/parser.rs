@@ -5,9 +5,9 @@ use thiserror::Error;
 use crate::{
     ast::{
         Between, Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, Fetch,
-        FetchType, GroupBy, IdentExpression, InfixOperator, IntExpression, Join, JoinType, Named,
-        NotInfixOperator, PrefixOperator, Program, Rows, SelectExpression, Statement, Union,
-        UnionType, When,
+        FetchType, GroupBy, GroupedExpression, IdentExpression, InfixOperator, IntExpression, Join,
+        JoinType, Named, NotInfixOperator, PrefixOperator, Program, Rows, SelectExpression,
+        SpannedElement, Statement, Union, UnionType, When,
     },
     lexer::Lexer,
     token::{GetKind, Token, TokenKind},
@@ -532,6 +532,7 @@ impl Parser {
             }),
             _ => self.parse_ident()?,
         };
+        let ident_span = self.expr_store.get_ref(&right).unwrap().span();
         let ExpressionInner::Ident(ident) = self.expr_store.remove(right).unwrap().inner else {
             unreachable!()
         };
@@ -540,7 +541,10 @@ impl Parser {
 
         let inner = ExpressionInner::Named(Named {
             expr: left,
-            name: Some(ident),
+            name: Some(SpannedElement {
+                element: ident,
+                span: ident_span,
+            }),
             span: Span { start, end },
         });
 
@@ -560,13 +564,46 @@ impl Parser {
             _ = self.expr_store.remove(expr);
             return Ok(out);
         };
+        if let Expression {
+            inner:
+                ExpressionInner::Grouped(GroupedExpression {
+                    inner,
+                    name: Some(name),
+                }),
+            start,
+            end,
+        } = self.expr_store.get_ref(&expr).unwrap()
+        {
+            let out = Named {
+                expr: inner.clone(),
+                span: Span {
+                    start: *start,
+                    end: *end,
+                },
+                name: Some(name.clone()),
+            };
+
+            _ = self.expr_store.remove(expr);
+
+            return Ok(out);
+        }
         let name = if self.peek_token_in(&[TokenKind::ident(""), TokenKind::string("")]) {
             self.next_token();
-            Some(self.parse_ident_unwrap()?)
+            let ident = self.parse_ident_unwrap()?;
+            let span = self.cur_token.as_ref().unwrap().get_span();
+            Some(SpannedElement {
+                element: ident,
+                span,
+            })
         } else if self.peek_token_is(TokenKind::As) {
             self.next_token();
             self.next_token();
-            Some(self.parse_ident_unwrap()?)
+            let ident = self.parse_ident_unwrap()?;
+            let span = self.cur_token.as_ref().unwrap().get_span();
+            Some(SpannedElement {
+                element: ident,
+                span,
+            })
         } else {
             None
         };
@@ -797,7 +834,11 @@ impl Parser {
         let name = if self.peek_token_in(&[TokenKind::ident(""), TokenKind::string("")]) {
             self.next_token();
 
-            Some(self.parse_ident_unwrap()?)
+            let element = self.parse_ident_unwrap()?;
+            Some(crate::ast::SpannedElement {
+                element,
+                span: self.cur_token.as_ref().unwrap().get_span(),
+            })
         } else {
             None
         };
@@ -1086,7 +1127,7 @@ mod tests {
 
     use crate::ast::{
         Expression, GroupedExpression, IdentExpression, InfixExpression, PrintExpression,
-        SelectExpression,
+        SelectExpression, SpannedElement,
     };
 
     use super::*;
@@ -1237,7 +1278,10 @@ mod tests {
                     })
                     .into(),
                 ),
-                name: Some(IdentExpression { ident: "M".into() }),
+                name: Some(SpannedElement {
+                    element: IdentExpression { ident: "M".into() },
+                    span: Default::default(),
+                }),
             }
         };
 
@@ -1566,5 +1610,25 @@ mod tests {
         };
 
         test_select(store, &expected, select);
+    }
+
+    #[test]
+    fn from_named() {
+        let input = "SELECT A.b FROM (SELECT b FROM Thing) A";
+
+        let lexer = Lexer::new(input);
+        let mut parser = Parser::new(lexer);
+
+        let program = parser.parse_program().unwrap();
+
+        let store = &program.store;
+
+        let Statement::Expression(stmt) = &program.statements[0];
+
+        let ExpressionInner::Select(select) = &store.get_ref(stmt).unwrap().inner else {
+            unreachable!()
+        };
+
+        assert_eq!("A", select.from.name.as_ref().unwrap().ident);
     }
 }

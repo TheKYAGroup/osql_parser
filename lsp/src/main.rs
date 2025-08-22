@@ -14,10 +14,15 @@ use osql_parser::oir::OirCompiler;
 use serde::{Deserialize, Serialize, de::Visitor};
 
 use crate::{
-    lsp::diagnostics::{Diagnostic, DiagnosticRelatedInformation, new_diagnostics_notification},
+    lsp::{
+        Location, Position, Range, Response,
+        diagnostics::{Diagnostic, DiagnosticRelatedInformation, new_diagnostics_notification},
+        text_document::PositionResponse,
+    },
     rpc::{decode_message, encode_message},
 };
 
+mod definition;
 mod lsp;
 mod rpc;
 
@@ -245,6 +250,63 @@ fn handle_message(method: EcoString, contents: &[u8], state: &mut State) {
             };
 
             info!("Sent the reply")
+        }
+        "textDocument/definition" => {
+            let request: lsp::text_document::PositionRequest =
+                match serde_json::from_slice(contents) {
+                    Err(err) => {
+                        error!("Couldn't parse definition: {err:?}");
+                        return;
+                    }
+                    Ok(val) => val,
+                };
+
+            info!("Position: {:?}", request.params.position);
+
+            if let Some(doc) = state.documents.get(&request.params.text_document.uri) {
+                let program = match osql_parser::parse_with_backtrace(doc.clone()) {
+                    Err(err) => {
+                        error!("Failed to parse program for definition: {err:?}");
+                        return;
+                    }
+                    Ok(val) => val,
+                };
+
+                let def =
+                    definition::get_definition(&program, &request.params.position).map(|loc| {
+                        let pos = Position {
+                            line: loc.line,
+                            character: loc.col,
+                        };
+                        Location {
+                            uri: request.params.text_document.uri.clone(),
+                            range: Range {
+                                start: pos.clone(),
+                                end: pos.clone(),
+                            },
+                        }
+                    });
+
+                let response = PositionResponse {
+                    response: Response {
+                        rpc: "2.0".to_string(),
+                        id: Some(request.request.id),
+                    },
+                    result: def,
+                };
+                let reply = rpc::encode_message(&response);
+
+                let mut writer = stdout();
+                if let Err(err) = write!(&mut writer, "{reply}") {
+                    error!("Failed to write to stdout: {err:?}");
+                };
+
+                if let Err(err) = writer.flush() {
+                    error!("Failed to flush stdio: {err:?}");
+                };
+
+                info!("Sent the reply")
+            }
         }
         "shutdown" => {
             state.should_exit = true;

@@ -42,7 +42,7 @@ impl From<osql_parser::Span> for Range {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Position {
     pub line: usize,
     pub character: usize,

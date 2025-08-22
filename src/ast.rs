@@ -133,7 +133,7 @@ impl ExpressionIdx {
                 match &grouped.name {
                     Some(name) if add_name => cols
                         .iter()
-                        .map(|col| ecow::eco_format!("{}.{}", name, col))
+                        .map(|col| ecow::eco_format!("{}.{}", name.element, col))
                         .collect(),
                     _ => cols,
                 }
@@ -154,7 +154,7 @@ impl ExpressionIdx {
                     Columns::Individual(nameds) => nameds
                         .iter()
                         .flat_map(|named| match &named.name {
-                            Some(name) => hash_set![name.ident.clone()],
+                            Some(name) => hash_set![name.element.ident.clone()],
                             None => named.expr.get_outer_cols(store, false),
                         })
                         .collect(),
@@ -287,6 +287,7 @@ impl PartialEq for Expression {
 }
 
 #[derive(Debug, Clone, Delegate, PartialEq)]
+#[cfg_attr(feature = "strum", derive(strum::AsRefStr))]
 #[delegate(FmtWithStore)]
 pub enum ExpressionInner {
     Grouped(GroupedExpression),
@@ -343,10 +344,22 @@ impl ExpressionInner {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SpannedElement<T: Clone + PartialEq + Debug> {
+    pub element: T,
+    pub span: Span,
+}
+
+impl<T: Clone + PartialEq + Debug> PartialEq for SpannedElement<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.element == other.element
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupedExpression {
     pub inner: ExpressionIdx,
-    pub name: Option<IdentExpression>,
+    pub name: Option<SpannedElement<IdentExpression>>,
 }
 
 impl FmtWithStore for GroupedExpression {
@@ -360,7 +373,7 @@ impl FmtWithStore for GroupedExpression {
         write!(f, ")")?;
 
         if let Some(name) = &self.name {
-            write!(f, " {name}")?;
+            write!(f, " {}", name.element)?;
         }
 
         Ok(())
@@ -645,7 +658,7 @@ pub enum OuterJoinDirection {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Named {
     pub expr: ExpressionIdx,
-    pub name: Option<IdentExpression>,
+    pub name: Option<SpannedElement<IdentExpression>>,
     pub span: Span,
 }
 
@@ -658,7 +671,7 @@ impl FmtWithStore for Named {
         write_store!(f, store, self.expr)?;
 
         if let Some(name) = &self.name {
-            write!(f, " {name}")?;
+            write!(f, " {}", name.element)?;
         }
 
         Ok(())

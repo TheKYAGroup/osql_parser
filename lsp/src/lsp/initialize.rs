@@ -40,6 +40,8 @@ pub struct InitializeResult {
 pub struct ServerCapabilities {
     #[serde(rename = "textDocumentSync")]
     text_document_sync: i32,
+    #[serde(rename = "definitionProvider")]
+    definition_provider: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,6 +59,7 @@ pub fn new_initialize_response(id: i32) -> InitializeResponse {
         result: InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: 1,
+                definition_provider: true,
             },
             server_info: ServerInfo {
                 name: "osqllsp".to_string(),

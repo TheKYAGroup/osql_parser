@@ -239,7 +239,7 @@ impl<'a> OirCompiler<'a> {
             Ok(Oir {
                 span,
                 inner: InnerOir::Named(Named {
-                    name: name.ident.clone(),
+                    name: name.element.ident.clone(),
                     inner: Box::new(inner),
                 }),
             })
@@ -440,7 +440,7 @@ impl<'a> OirCompiler<'a> {
                 for named in nameds {
                     let expr = new_comp.compile_expr_idx(&named.expr)?;
 
-                    let name = match named.name.as_ref().map(|i| i.ident.clone()) {
+                    let name = match named.name.as_ref().map(|i| i.element.ident.clone()) {
                         Some(val) => val,
                         None => {
                             let mut found = false;
@@ -484,7 +484,7 @@ impl<'a> OirCompiler<'a> {
             Oir {
                 span: named.span.clone(),
                 inner: InnerOir::Named(Named {
-                    name: name.ident.clone(),
+                    name: name.element.ident.clone(),
                     inner: Box::new(inner),
                 }),
             }
