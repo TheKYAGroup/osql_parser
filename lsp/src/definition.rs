@@ -1,10 +1,10 @@
 use ecow::EcoString;
-use log::{error, info};
+use log::{error, info, warn};
 use osql_parser::{
     Loc, Span,
     ast::{
-        Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, InfixExpression,
-        InfixOperator, Named, Program, SelectExpression, Statement,
+        Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, GroupedExpression,
+        InfixExpression, InfixOperator, Named, Program, SelectExpression, Statement,
     },
     oir::Oir,
 };
@@ -142,8 +142,19 @@ impl<'a> DefintionGetter<'a> {
     }
 
     fn handle_select_col(&self, select: &SelectExpression, col: GetCol) -> Option<Loc> {
-        info!("Handling: {:#?}", (&col, &select));
-        match (col, &select.from) {
+        info!("Handeling select for col: {col:?}");
+        match (&col, &select.columns) {
+            (GetCol::Base(base), Columns::Individual(cols)) => {
+                for col in cols {
+                    if self.is_col(col, base) {
+                        return Some(col.span.end);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        match (&col, &select.from) {
             (
                 GetCol::Base(base),
                 Named {
@@ -151,7 +162,7 @@ impl<'a> DefintionGetter<'a> {
                     span,
                     ..
                 },
-            ) if base == name.element.ident => return Some(name.span.start),
+            ) if base == &name.element.ident => return Some(name.span.end),
             (
                 GetCol::Base(base),
                 Named {
@@ -170,9 +181,10 @@ impl<'a> DefintionGetter<'a> {
                 }) => match &select.columns {
                     Columns::All => return Some(*start),
                     Columns::Individual(cols) => {
+                        info!("Searching cols");
                         for col in cols {
                             if self.is_col(&col, &base) {
-                                return Some(*start);
+                                return Some(col.span.end);
                             }
                         }
                     }
@@ -182,14 +194,14 @@ impl<'a> DefintionGetter<'a> {
             (
                 GetCol::Rec {
                     name: col_name,
-                    inner,
+                    right: inner,
                 },
                 Named {
                     expr,
                     name: Some(name),
                     ..
                 },
-            ) if col_name == name.element.ident => match self.store.get_ref(expr) {
+            ) if col_name == &name.element.ident => match self.store.get_ref(expr) {
                 Some(Expression {
                     inner: ExpressionInner::Ident(_),
                     start,
@@ -217,7 +229,7 @@ impl<'a> DefintionGetter<'a> {
                     if let GetCol::Base(col_name) = inner.as_ref() {
                         for col in cols {
                             if self.is_col(col, col_name) {
-                                return Some(col.span.start);
+                                return Some(col.span.end);
                             }
                         }
                     }
@@ -227,7 +239,82 @@ impl<'a> DefintionGetter<'a> {
             _ => {}
         }
 
+        for join in &select.join {
+            let expr = self.store.get_ref(&join.expr)?;
+
+            info!("Checking join: {:?}", (&col, expr));
+            match (&col, expr) {
+                (
+                    GetCol::Base(base),
+                    Expression {
+                        inner:
+                            ExpressionInner::Named(Named {
+                                name: Some(name), ..
+                            }),
+                        ..
+                    },
+                )
+                | (
+                    GetCol::Base(base),
+                    Expression {
+                        inner:
+                            ExpressionInner::Grouped(GroupedExpression {
+                                name: Some(name), ..
+                            }),
+                        ..
+                    },
+                ) if base == &name.element.ident => {
+                    return Some(name.span.start);
+                }
+                (
+                    GetCol::Rec {
+                        name: outer_name,
+                        right,
+                    },
+                    Expression {
+                        inner:
+                            ExpressionInner::Named(Named {
+                                name: Some(name),
+                                expr,
+                                ..
+                            }),
+                        ..
+                    },
+                )
+                | (
+                    GetCol::Rec {
+                        name: outer_name,
+                        right,
+                    },
+                    Expression {
+                        inner:
+                            ExpressionInner::Grouped(GroupedExpression {
+                                name: Some(name),
+                                inner: expr,
+                                ..
+                            }),
+                        ..
+                    },
+                ) if outer_name == &name.element.ident => {
+                    return self.handle_expr(expr, *right.clone());
+                }
+                _ => {
+                    warn!("Failed to find join: {:?}", expr)
+                }
+            }
+        }
+
         None
+    }
+
+    fn handle_expr(&self, expr_idx: &ExpressionIdx, col: GetCol) -> Option<Loc> {
+        let expr = self.store.get_ref(expr_idx)?;
+        match &expr.inner {
+            ExpressionInner::Select(select_expression) => {
+                self.handle_select_col(select_expression, col)
+            }
+            _ => None,
+        }
     }
 
     fn is_col(&self, named: &Named, col_name: &EcoString) -> bool {
@@ -275,7 +362,15 @@ impl<'a> DefintionGetter<'a> {
                     if left.is_some() {
                         return left;
                     }
-                    return self.get_col(&infix_expression.right, position);
+                    let right = self.get_col(&infix_expression.right, position)?;
+                    let GetCol::Base(left) = self.collect_col(&infix_expression.left)? else {
+                        error!("Left is not base");
+                        return None;
+                    };
+                    return Some(GetCol::Rec {
+                        name: left,
+                        right: right.into(),
+                    });
                 }
 
                 if let Some(left) = self.get_col(&infix_expression.left, position) {
@@ -371,6 +466,30 @@ impl<'a> DefintionGetter<'a> {
             _ => None,
         }
     }
+
+    fn collect_col(&self, expr_idx: &ExpressionIdx) -> Option<GetCol> {
+        let expr = self.store.get_ref(expr_idx)?;
+
+        match &expr.inner {
+            ExpressionInner::Infix(InfixExpression { left, op, right })
+                if op == &InfixOperator::Period =>
+            {
+                let GetCol::Base(left) = self.collect_col(left)? else {
+                    error!("Left is not base");
+                    return None;
+                };
+                let right = self.collect_col(right)?;
+                Some(GetCol::Rec {
+                    name: left,
+                    right: Box::new(right),
+                })
+            }
+            ExpressionInner::Ident(ident_expression) => {
+                Some(GetCol::Base(ident_expression.ident.clone()))
+            }
+            _ => None,
+        }
+    }
 }
 
 pub fn get_definition<'a>(program: &'a Program, position: &Position) -> Option<Loc> {
@@ -393,10 +512,10 @@ fn within(span: &Span, position: &Position) -> bool {
     true
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 enum GetCol {
     Base(EcoString),
-    Rec { name: EcoString, inner: Box<GetCol> },
+    Rec { name: EcoString, right: Box<GetCol> },
 }
 
 struct TypedDebugWrapper<'a, T: ?Sized>(&'a T);
