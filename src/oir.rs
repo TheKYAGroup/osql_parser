@@ -202,10 +202,10 @@ impl<'a> OirCompiler<'a> {
     }
 
     fn compile_int_expression(&self, int: &ast::IntExpression, span: Span) -> CompilerResult {
-        return Ok(Oir {
+        Ok(Oir {
             span,
             inner: InnerOir::Integer(int.int),
-        });
+        })
     }
 
     fn compile_function_call(
@@ -545,7 +545,7 @@ impl ObjectColumns {
 
                     self.check_cols(right)
                 }
-                _ => self.is_one(&left) && self.is_one(&right),
+                _ => self.is_one(left) && self.is_one(right),
             },
             InnerOir::FunctionCall(_) => todo!(),
             InnerOir::Integer(_) => todo!(),

@@ -450,11 +450,11 @@ impl FmtWithStore for OrderBy {
         self.expr.fmt_with_store(f, store)?;
 
         if let Some(order) = &self.order {
-            write!(f, "{}", order)?;
+            write!(f, "{order}")?;
         }
 
         if let Some(nulls) = &self.nulls {
-            write!(f, "{}", nulls)?;
+            write!(f, "{nulls}")?;
         }
 
         Ok(())
