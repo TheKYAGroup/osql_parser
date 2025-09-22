@@ -10,6 +10,7 @@ pub fn encode_message<T: Serialize>(msg: &T) -> String {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub enum DecodeErrorKind {
     HeaderNotFound,
     ContentLengthToString(Utf8Error),

@@ -6,7 +6,6 @@ use osql_parser::{
         Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, GroupedExpression,
         InfixExpression, InfixOperator, Named, Program, SelectExpression, Statement,
     },
-    oir::Oir,
 };
 
 use crate::lsp::Position;
@@ -54,7 +53,7 @@ impl<'a> DefintionGetter<'a> {
                     }
                 }
 
-                return self.get_expression(&grouped_expression.inner, position);
+                self.get_expression(&grouped_expression.inner, position)
             }
             ExpressionInner::Select(select_expression) => {
                 if within(&select_expression.from.span, position) {
@@ -70,48 +69,38 @@ impl<'a> DefintionGetter<'a> {
                         }
                         if within(&col.span, position) {
                             got_col = self.get_col(&col.expr, position);
-                            info!("Got col: {:?}", got_col);
+                            info!("Got col: {got_col:?}");
                         }
                     }
                 }
 
                 if got_col.is_none()
-                    && let Some((expr_idx, span)) = &select_expression
-                        .where_expr
-                        .as_ref()
-                        .map(|expr| {
+                    && let Some((expr_idx, span)) =
+                        &select_expression.where_expr.as_ref().and_then(|expr| {
                             self.store
                                 .get_ref(expr)
                                 .map(|expr_in| (expr, expr_in.span()))
                         })
-                        .flatten()
+                    && within(span, position)
                 {
-                    if within(&span, position) {
-                        got_col = self.get_col(&expr_idx, position)
-                    }
+                    got_col = self.get_col(expr_idx, position)
                 }
 
                 if got_col.is_none()
-                    && let Some((expr_idx, span)) = &select_expression
-                        .group
-                        .as_ref()
-                        .map(|expr| {
+                    && let Some((expr_idx, span)) =
+                        &select_expression.group.as_ref().and_then(|expr| {
                             self.store
                                 .get_ref(&expr.by)
                                 .map(|expr_in| (&expr.by, expr_in.span()))
                         })
-                        .flatten()
+                    && within(span, position)
                 {
-                    if within(&span, position) {
-                        got_col = self.get_col(&expr_idx, position)
-                    }
+                    got_col = self.get_col(expr_idx, position)
                 }
 
-                info!("Out: {:?}", got_col);
+                info!("Out: {got_col:?}");
 
-                let out = got_col
-                    .map(|v| self.handle_select_col(select_expression, v))
-                    .flatten();
+                let out = got_col.and_then(|v| self.handle_select_col(select_expression, v));
 
                 if out.is_some() {
                     return out;
@@ -132,7 +121,7 @@ impl<'a> DefintionGetter<'a> {
                 }
 
                 if within(&select_expression.from.span, position) {
-                    return self.get_expression(&select_expression.from.expr, position);
+                    self.get_expression(&select_expression.from.expr, position)
                 } else {
                     None
                 }
@@ -158,9 +147,7 @@ impl<'a> DefintionGetter<'a> {
             (
                 GetCol::Base(base),
                 Named {
-                    name: Some(name),
-                    span,
-                    ..
+                    name: Some(name), ..
                 },
             ) if base == &name.element.ident => return Some(name.span.end),
             (
@@ -517,7 +504,5 @@ enum GetCol {
     Base(EcoString),
     Rec { name: EcoString, right: Box<GetCol> },
 }
-
-struct TypedDebugWrapper<'a, T: ?Sized>(&'a T);
 
 use core::fmt::Debug;

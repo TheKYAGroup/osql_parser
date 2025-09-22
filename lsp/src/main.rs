@@ -3,20 +3,17 @@ use std::{
     io::{BufRead, Read, Write, stdout},
     num::ParseIntError,
     str::Utf8Error,
-    string::FromUtf8Error,
 };
 
-use derive_more::From;
 use ecow::EcoString;
 use flexi_logger::{FileSpec, LogSpecification};
 use log::{error, info};
 use osql_parser::oir::OirCompiler;
-use serde::{Deserialize, Serialize, de::Visitor};
 
 use crate::{
     lsp::{
         Location, Position, Range, Response,
-        diagnostics::{Diagnostic, DiagnosticRelatedInformation, new_diagnostics_notification},
+        diagnostics::{Diagnostic, new_diagnostics_notification},
         text_document::PositionResponse,
     },
     rpc::{decode_message, encode_message},
@@ -36,13 +33,11 @@ fn main() {
 
     let input = std::io::stdin();
 
-    let output = std::io::stdout();
-
     let mut buf_read = std::io::BufReader::new(input);
 
     let mut state = State::new();
 
-    while (!state.should_exit) {
+    while !state.should_exit {
         let message = match get_message(&mut buf_read) {
             Ok(Some(val)) => val,
             Ok(None) => continue,
@@ -65,6 +60,7 @@ fn main() {
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 enum GetMessageError {
     LengthFromUtf8(Utf8Error),
     LengParse(ParseIntError),
