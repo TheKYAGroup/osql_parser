@@ -51,7 +51,7 @@ pub struct ServerInfo {
 }
 
 pub fn new_initialize_response(id: i32) -> InitializeResponse {
-    return InitializeResponse {
+    InitializeResponse {
         response: Response {
             rpc: "2.0".to_string(),
             id: Some(id),
@@ -66,5 +66,5 @@ pub fn new_initialize_response(id: i32) -> InitializeResponse {
                 version: "0.0.1".to_string(),
             },
         },
-    };
+    }
 }

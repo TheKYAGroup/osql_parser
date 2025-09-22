@@ -132,15 +132,12 @@ impl<'a> DefintionGetter<'a> {
 
     fn handle_select_col(&self, select: &SelectExpression, col: GetCol) -> Option<Loc> {
         info!("Handeling select for col: {col:?}");
-        match (&col, &select.columns) {
-            (GetCol::Base(base), Columns::Individual(cols)) => {
-                for col in cols {
-                    if self.is_col(col, base) {
-                        return Some(col.span.end);
-                    }
+        if let (GetCol::Base(base), Columns::Individual(cols)) = (&col, &select.columns) {
+            for col in cols {
+                if self.is_col(col, base) {
+                    return Some(col.span.end);
                 }
             }
-            _ => {}
         }
 
         match (&col, &select.from) {
@@ -155,7 +152,7 @@ impl<'a> DefintionGetter<'a> {
                 Named {
                     expr, name: None, ..
                 },
-            ) => match self.store.get_ref(&expr) {
+            ) => match self.store.get_ref(expr) {
                 Some(Expression {
                     inner: ExpressionInner::Ident(_),
                     start,
@@ -170,7 +167,7 @@ impl<'a> DefintionGetter<'a> {
                     Columns::Individual(cols) => {
                         info!("Searching cols");
                         for col in cols {
-                            if self.is_col(&col, &base) {
+                            if self.is_col(col, base) {
                                 return Some(col.span.end);
                             }
                         }
@@ -286,7 +283,7 @@ impl<'a> DefintionGetter<'a> {
                     return self.handle_expr(expr, *right.clone());
                 }
                 _ => {
-                    warn!("Failed to find join: {:?}", expr)
+                    warn!("Failed to find join: {expr:?}")
                 }
             }
         }
@@ -305,16 +302,16 @@ impl<'a> DefintionGetter<'a> {
     }
 
     fn is_col(&self, named: &Named, col_name: &EcoString) -> bool {
-        if let Some(name) = &named.name {
-            if name.element.ident == *col_name {
-                return true;
-            }
+        if let Some(name) = &named.name
+            && name.element.ident == *col_name
+        {
+            return true;
         }
 
         self.is_col_expr(&named.expr, col_name)
     }
 
-    fn is_col_expr(&self, expr_idx: &ExpressionIdx, col_name: &EcoString) -> bool {
+    fn is_col_expr(&self, expr_idx: &ExpressionIdx, _col_name: &EcoString) -> bool {
         let Some(expr) = self.store.get_ref(expr_idx) else {
             return false;
         };
@@ -324,7 +321,7 @@ impl<'a> DefintionGetter<'a> {
             ..
         } = expr
         {
-            self.is_col_expr(right, col_name)
+            self.is_col_expr(right, _col_name)
         } else {
             false
         }
@@ -364,11 +361,11 @@ impl<'a> DefintionGetter<'a> {
                     return Some(left);
                 }
 
-                return self.get_col(&infix_expression.right, position);
+                self.get_col(&infix_expression.right, position)
             }
             ExpressionInner::Ident(ident_expression) => {
-                info!("Got ident: {:?}", ident_expression);
-                return Some(GetCol::Base(ident_expression.ident.clone()));
+                info!("Got ident: {ident_expression:?}");
+                Some(GetCol::Base(ident_expression.ident.clone()))
             }
             ExpressionInner::Int(_) => None,
             ExpressionInner::Case(case_expression) => {
@@ -407,7 +404,7 @@ impl<'a> DefintionGetter<'a> {
                 }
 
                 for arg in &function_call.args {
-                    let arg = self.get_col(&arg, position);
+                    let arg = self.get_col(arg, position);
                     if arg.is_some() {
                         return arg;
                     }
@@ -479,7 +476,7 @@ impl<'a> DefintionGetter<'a> {
     }
 }
 
-pub fn get_definition<'a>(program: &'a Program, position: &Position) -> Option<Loc> {
+pub fn get_definition(program: &Program, position: &Position) -> Option<Loc> {
     DefintionGetter::get_from_program(program, position)
 }
 

@@ -47,11 +47,11 @@ pub fn new_diagnostics_notification(
     uri: EcoString,
     diagnostics: Vec<Diagnostic>,
 ) -> PublishDiagnosticsNotification {
-    return PublishDiagnosticsNotification {
+    PublishDiagnosticsNotification {
         notification: super::Notification {
             rpc: "2.0".to_string(),
             method: "textDocument/publishDiagnostics".to_string(),
         },
         params: PublishDiagnosticsParams { uri, diagnostics },
-    };
+    }
 }

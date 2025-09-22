@@ -58,13 +58,10 @@ where
     'b: 'a,
 {
     fn split_on_slice(&'a self, pred: &'b Self) -> Option<(&'a Self, &'a Self)> {
-        let Some((pos, _)) = self
+        let (pos, _) = self
             .windows(pred.len())
             .enumerate()
-            .find(|(_, window)| *window == pred)
-        else {
-            return None;
-        };
+            .find(|(_, window)| *window == pred)?;
 
         Some((&self[..pos], &self[pos + pred.len()..]))
     }

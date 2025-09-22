@@ -42,7 +42,7 @@ fn main() {
             Ok(Some(val)) => val,
             Ok(None) => continue,
             Err(err) => {
-                error!("Failed to get message: {:?}", err);
+                error!("Failed to get message: {err:?}");
                 continue;
             }
         };
@@ -81,7 +81,7 @@ fn get_message<T: Read>(
 
     loop {
         buf_reader.read_until(b'\r', &mut buf)?;
-        if buf.len() == 0 || buf[buf.len() - 1] == b'\0' {
+        if buf.is_empty() || buf[buf.len() - 1] == b'\0' {
             continue;
         }
         buf.extend([0, 0, 0]);
@@ -108,10 +108,9 @@ fn get_message<T: Read>(
     let pos = pos + content_length_str.len();
 
     let content_length_bytes = &header[pos..];
-    let content_length: usize = str::from_utf8(&content_length_bytes)
-        .map(|val| {
+    let content_length: usize = str::from_utf8(content_length_bytes)
+        .inspect(|&val| {
             info!("Content_length: {val}");
-            val
         })
         .map_err(GetMessageError::LengthFromUtf8)?
         .parse()
@@ -123,7 +122,7 @@ fn get_message<T: Read>(
 
     buf.extend(content);
 
-    return Ok(Some(buf));
+    Ok(Some(buf))
 }
 
 fn handle_message(method: EcoString, contents: &[u8], state: &mut State) {
@@ -209,16 +208,13 @@ fn handle_message(method: EcoString, contents: &[u8], state: &mut State) {
                     let oir = OirCompiler::compile_program(&prog);
 
                     for oir in oir {
-                        match oir {
-                            Err(err) => {
-                                info.push(Diagnostic {
-                                    range: err.span.into(),
-                                    source: Some(uri.clone()),
-                                    message: format!("{}", err.inner).into(),
-                                    related_information: Default::default(),
-                                });
-                            }
-                            Ok(_) => {}
+                        if let Err(err) = oir {
+                            info.push(Diagnostic {
+                                range: err.span.into(),
+                                source: Some(uri.clone()),
+                                message: format!("{}", err.inner).into(),
+                                related_information: Default::default(),
+                            });
                         }
                     }
                 }
