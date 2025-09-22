@@ -136,12 +136,13 @@ impl Clone for ParserErrorWithBacktrace {
 }
 
 impl ParserErrorWithBacktrace {
-    fn new(kind: ParserError, span: Span) -> Self {
+    fn new(kind: ParserError, span: Span) -> Box<Self> {
         Self {
             inner: kind,
             backtrace: Backtrace::capture().into(),
             span,
         }
+        .into()
     }
 }
 
@@ -171,7 +172,7 @@ impl std::hash::Hash for Parser {
     }
 }
 
-pub type Result<T> = core::result::Result<T, ParserErrorWithBacktrace>;
+pub type Result<T> = core::result::Result<T, Box<ParserErrorWithBacktrace>>;
 
 type PrefixParseFn = fn(&mut Parser) -> Result<ExpressionIdx>;
 type InfixParseFn = fn(&mut Parser, left: ExpressionIdx) -> Result<ExpressionIdx>;
@@ -891,7 +892,7 @@ impl Parser {
         Ok(self.new_expr_idx(Expression { inner, start, end }))
     }
 
-    fn unexpeccted_eof(&self) -> core::result::Result<!, ParserErrorWithBacktrace> {
+    fn unexpeccted_eof(&self) -> core::result::Result<!, Box<ParserErrorWithBacktrace>> {
         Err(ParserErrorWithBacktrace::new(
             ParserError::UnexpectedEOF,
             self.last_span.clone(),

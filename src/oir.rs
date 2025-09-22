@@ -104,7 +104,7 @@ pub enum ErrorType {
     #[error("Infix operator not implemented: {_0}")]
     InfixNotImplemented(ast::InfixOperator),
     #[error("Expression not implemented: {_0:?}")]
-    ExpressionNotImplemented(ast::ExpressionInner),
+    ExpressionNotImplemented(Box<ast::ExpressionInner>),
     #[error("Cannot do {left} {infix} {right}")]
     IncorrectInfixTypes {
         left: ResolvedType,
@@ -195,7 +195,7 @@ impl<'a> OirCompiler<'a> {
                 self.compile_function_call(function_call, expr.span())
             }
             _ => Err(Error::new(
-                ErrorType::ExpressionNotImplemented(expr.inner.clone()),
+                ErrorType::ExpressionNotImplemented(Box::new(expr.inner.clone())),
                 expr.span(),
             )),
         }

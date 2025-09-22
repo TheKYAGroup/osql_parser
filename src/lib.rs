@@ -18,11 +18,13 @@ pub mod token;
 pub fn parse(input: EcoString) -> Result<Program, parser::ParserError> {
     let lexer = lexer::Lexer::new(input);
     let mut parser = parser::Parser::new(lexer);
-    parser.parse_program().map_err(|err| err.inner)
+    parser.parse_program().map_err(|err| err.inner.clone())
 }
 
 #[memoize]
-pub fn parse_with_backtrace(input: EcoString) -> Result<Program, parser::ParserErrorWithBacktrace> {
+pub fn parse_with_backtrace(
+    input: EcoString,
+) -> Result<Program, Box<parser::ParserErrorWithBacktrace>> {
     let lexer = lexer::Lexer::new(input);
     let mut parser = parser::Parser::new(lexer);
     parser.parse_program()

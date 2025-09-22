@@ -21,7 +21,7 @@ fn main() {
     let lexer = Lexer::new(input.to_string());
     let mut parser = Parser::new(lexer);
 
-    let out = match parser.parse_program() {
+    let out = match parser.parse_program().map_err(|err| *err) {
         Ok(val) => val,
         Err(ParserErrorWithBacktrace {
             inner: ParserError::PeekFailed { expected, got },
