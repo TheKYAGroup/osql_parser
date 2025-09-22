@@ -1,4 +1,4 @@
-use std::{fmt::Display, hash::Hash, mem::discriminant, ops::Index};
+use std::{fmt::Display, hash::Hash, mem::discriminant};
 
 use derive_more::Display;
 use ecow::EcoString;
@@ -143,6 +143,11 @@ pub enum TokenKind {
     #[ident]
     Null,
 
+    /// NULLS
+    #[display("NULLS")]
+    #[ident]
+    Nulls,
+
     /// NOT
     #[display("NOT")]
     #[ident]
@@ -203,6 +208,11 @@ pub enum TokenKind {
     #[ident]
     First,
 
+    /// LAST
+    #[display("LAST")]
+    #[ident]
+    Last,
+
     /// NEXT
     #[display("NEXT")]
     #[ident]
@@ -222,6 +232,21 @@ pub enum TokenKind {
     #[display("ONLY")]
     #[ident]
     Only,
+
+    /// ORDER
+    #[display("ORDER")]
+    #[ident]
+    Order,
+
+    /// ASC
+    #[display("ASC")]
+    #[ident]
+    Asc,
+
+    /// DEC
+    #[display("DEC")]
+    #[ident]
+    Dec,
 
     /// =
     #[display("=")]

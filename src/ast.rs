@@ -389,6 +389,7 @@ pub struct SelectExpression {
     pub join: Vec<Join>,
     pub group: Option<GroupBy>,
     pub union: Vec<Union>,
+    pub order_by: Vec<OrderBy>,
     pub fetch: Option<Fetch>,
 }
 
@@ -418,12 +419,58 @@ impl FmtWithStore for SelectExpression {
             group.fmt_with_store(f, store)?;
         }
 
+        if !self.order_by.is_empty() {
+            write!(f, "ORDER BY ")?;
+            for order_by in &self.order_by {
+                order_by.fmt_with_store(f, store)?;
+            }
+        }
+
         if let Some(fetch) = &self.fetch {
             fetch.fmt_with_store(f, store)?;
         }
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderBy {
+    pub expr: ExpressionIdx,
+    pub order: Option<Order>,
+    pub nulls: Option<Nulls>,
+}
+
+impl FmtWithStore for OrderBy {
+    fn fmt_with_store(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        store: &ExpressionStore,
+    ) -> std::fmt::Result {
+        self.expr.fmt_with_store(f, store)?;
+
+        if let Some(order) = &self.order {
+            write!(f, "{}", order)?;
+        }
+
+        if let Some(nulls) = &self.nulls {
+            write!(f, "{}", nulls)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum Order {
+    Asc,
+    Dec,
+}
+
+#[derive(Debug, Clone, PartialEq, Display)]
+pub enum Nulls {
+    First,
+    Last,
 }
 
 #[derive(Debug, Clone, PartialEq)]

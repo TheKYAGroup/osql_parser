@@ -44,5 +44,6 @@ SELECT
    "po:Purchase Order"."Transaction detail Measures"."UIQTY" QTY
 FROM "po:Purchase Order") PO
 ON OrderEntry.ProjID = PO.ProjID
+ORDER BY 6 ASC NULLS LAST, 5 ASC NULLS LAST
 FETCH FIRST 500 ROWS ONLY
 ) M

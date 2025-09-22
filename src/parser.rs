@@ -6,8 +6,8 @@ use crate::{
     ast::{
         Between, Columns, Expression, ExpressionIdx, ExpressionInner, ExpressionStore, Fetch,
         FetchType, GroupBy, GroupedExpression, IdentExpression, InfixOperator, IntExpression, Join,
-        JoinType, Named, NotInfixOperator, PrefixOperator, Program, Rows, SelectExpression,
-        SpannedElement, Statement, Union, UnionType, When,
+        JoinType, Named, NotInfixOperator, Nulls, Order, OrderBy, PrefixOperator, Program, Rows,
+        SelectExpression, SpannedElement, Statement, Union, UnionType, When,
     },
     lexer::Lexer,
     token::{GetKind, Token, TokenKind},
@@ -354,10 +354,7 @@ impl Parser {
             None => {
                 return Err(ParserErrorWithBacktrace::new(
                     ParserError::PartialSelectExpr,
-                    Span {
-                        start: start,
-                        end: start,
-                    },
+                    Span { start, end: start },
                 ))?
             }
             Some(TokenKind::Asterisk) => Columns::All,
@@ -419,6 +416,13 @@ impl Parser {
             union.push(out);
         }
 
+        let order_by = if self.peek_token_is(TokenKind::Order) {
+            self.next_token();
+            self.parse_order_by()?
+        } else {
+            Vec::new()
+        };
+
         let fetch = if self.peek_token_is(TokenKind::Fetch) {
             self.next_token();
             Some(self.parse_fetch()?)
@@ -438,6 +442,7 @@ impl Parser {
                 group,
                 union,
                 fetch,
+                order_by,
             }),
             start,
             end,
@@ -711,6 +716,15 @@ impl Parser {
         };
 
         tokens.contains(peek_tok)
+    }
+
+    #[allow(unused)]
+    fn cur_token_in(&self, tokens: &[TokenKind]) -> bool {
+        let Some(cur_tok) = self.cur_token.get_kind() else {
+            return false;
+        };
+
+        tokens.contains(cur_tok)
     }
 
     fn parse_infix(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
@@ -1023,6 +1037,120 @@ impl Parser {
         Ok(GroupBy { by })
     }
 
+    fn parse_order_by(&mut self) -> Result<Vec<OrderBy>> {
+        assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Order));
+        self.expect_peek(TokenKind::By)?;
+
+        let mut out = Vec::new();
+
+        self.next_token();
+        let expr = self.parse_expression(Precedence::Lowest)?;
+        let order = if self.peek_token_in(&[TokenKind::Asc, TokenKind::Dec]) {
+            let out = match self
+                .peek_token
+                .get_kind()
+                .expect("Peek token is None after being Some")
+            {
+                TokenKind::Asc => Order::Asc,
+                TokenKind::Dec => Order::Dec,
+                _ => unreachable!(),
+            };
+
+            self.next_token();
+
+            Some(out)
+        } else {
+            None
+        };
+
+        let nulls = if self.peek_token_is(TokenKind::Nulls) {
+            self.next_token();
+
+            let out = match self.peek_token.get_kind() {
+                Some(TokenKind::First) => Nulls::First,
+                Some(TokenKind::Last) => Nulls::Last,
+                _ => {
+                    let span = if let Some(peek_tok) = &self.peek_token {
+                        peek_tok.get_span()
+                    } else {
+                        self.cur_token.as_ref().unwrap().get_span()
+                    };
+                    return Err(ParserErrorWithBacktrace::new(
+                        ParserError::MultiPeekFailed {
+                            expected: vec![TokenKind::First, TokenKind::Last],
+                            got: self.peek_token.clone(),
+                        },
+                        span,
+                    ));
+                }
+            };
+
+            self.next_token();
+
+            Some(out)
+        } else {
+            None
+        };
+
+        out.push(OrderBy { expr, order, nulls });
+
+        while self.peek_token_is(TokenKind::Comma) {
+            self.next_token();
+            self.next_token();
+            let expr = self.parse_expression(Precedence::Lowest)?;
+            let order = if self.peek_token_in(&[TokenKind::Asc, TokenKind::Dec]) {
+                let out = match self
+                    .peek_token
+                    .get_kind()
+                    .expect("Peek token is None after being Some")
+                {
+                    TokenKind::Asc => Order::Asc,
+                    TokenKind::Dec => Order::Dec,
+                    _ => unreachable!(),
+                };
+
+                self.next_token();
+
+                Some(out)
+            } else {
+                None
+            };
+
+            let nulls = if self.peek_token_is(TokenKind::Nulls) {
+                self.next_token();
+
+                let out = match self.peek_token.get_kind() {
+                    Some(TokenKind::First) => Nulls::First,
+                    Some(TokenKind::Last) => Nulls::Last,
+                    _ => {
+                        let span = if let Some(peek_tok) = &self.peek_token {
+                            peek_tok.get_span()
+                        } else {
+                            self.cur_token.as_ref().unwrap().get_span()
+                        };
+                        return Err(ParserErrorWithBacktrace::new(
+                            ParserError::MultiPeekFailed {
+                                expected: vec![TokenKind::First, TokenKind::Last],
+                                got: self.peek_token.clone(),
+                            },
+                            span,
+                        ));
+                    }
+                };
+
+                self.next_token();
+
+                Some(out)
+            } else {
+                None
+            };
+
+            out.push(OrderBy { expr, order, nulls });
+        }
+
+        Ok(out)
+    }
+
     fn parse_between(&mut self, left: ExpressionIdx) -> Result<ExpressionIdx> {
         assert_eq!(self.cur_token.get_kind(), Some(&TokenKind::Between));
 
@@ -1323,7 +1451,10 @@ mod tests {
                         })
                         .into(),
                     ),
-                    name: Some(IdentExpression { ident: "h".into() }),
+                    name: Some(SpannedElement {
+                        element: IdentExpression { ident: "h".into() },
+                        span: Default::default(),
+                    }),
                     ..Default::default()
                 },
                 where_expr: None,
@@ -1344,7 +1475,10 @@ mod tests {
                                 columns: crate::ast::Columns::All,
                                 from: Named {
                                     expr,
-                                    name: Some(IdentExpression { ident: "o".into() }),
+                                    name: Some(SpannedElement {
+                                        element: IdentExpression { ident: "o".into() },
+                                        span: Default::default(),
+                                    }),
                                     ..Default::default()
                                 },
                                 where_expr: None,
@@ -1629,6 +1763,6 @@ mod tests {
             unreachable!()
         };
 
-        assert_eq!("A", select.from.name.as_ref().unwrap().ident);
+        assert_eq!("A", select.from.name.as_ref().unwrap().element.ident);
     }
 }
